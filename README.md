@@ -17,11 +17,19 @@ A Progressive Web App (PWA) for a single China trip: calendar, reminders, contac
 - **Trains** – Planned routes list and one-click link to Trip.com to book high-speed rail.
 - **Offline** – App shell and static assets are cached; calendar, contacts, and todos use cached data when offline.
 
+## Deploying to Vercel
+
+1. **Push to GitHub** (you’re already there: `git push origin main`).
+2. Go to [vercel.com](https://vercel.com) and sign in (e.g. with GitHub).
+3. Click **Add New…** → **Project**. Import **ericmjl/kcheng-app** (or your fork). Leave framework and build settings as auto-detected.
+4. **Environment variables:** Before or after the first deploy, go to the project → **Settings** → **Environment Variables**. Add the same vars you use in `.env.local` (see list below). For **FIREBASE_PRIVATE_KEY**, paste the full key; Vercel supports multi-line values (paste the key with real newlines, or use one line with `\n` between lines).
+5. Click **Deploy**. Every push to `main` will trigger a new production deploy; other branches get preview URLs.
+
 ## Setup (no coding)
 
-1. **Clone and deploy**
-   - Push this repo to GitHub and connect it to [Vercel](https://vercel.com). Deploy.
-   - Or run locally: `npm install` then `npm run dev` and open http://localhost:3000.
+1. **Clone and run locally**
+   - `git clone` this repo, then `npm install` and `npm run dev` → http://localhost:3000.
+   - Or deploy to Vercel (see **Deploying to Vercel** above).
 
 2. **Environment variables (Vercel)**
    - In the Vercel project → Settings → Environment Variables, add (optional but recommended):
@@ -34,7 +42,7 @@ A Progressive Web App (PWA) for a single China trip: calendar, reminders, contac
    - If users see “The assistant isn’t available” or data doesn’t load, Firebase isn’t set up yet. Do the following:
    - Create a project at [Firebase Console](https://console.firebase.google.com). Enable **Authentication** → Sign-in method → **Anonymous** (so users get a session without a sign-up form). Enable **Firestore** (Create database; start in test mode for dev, then add rules before production).
    - **Client config:** In Project settings → General, under “Your apps”, add a web app. Copy the config and set in Vercel (or `.env.local`): `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`, `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`.
-   - **Server (Admin) config:** Project settings → Service accounts → Generate new private key. From the JSON, set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` (use the `private_key` value; in Vercel, paste as one line with `\n` for newlines).
+   - **Server (Admin) config:** Project settings → Service accounts → Generate new private key. From the JSON, set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`. In Vercel you can paste the full key with real newlines (multi-line value) or as one line with `\n` between lines.
 
 4. **In the app**
    - Open **Settings**. Enter your **trip start** and **trip end** dates and timezone. Optionally paste API keys (Claude, OpenAI, Finnhub) if you prefer not to use env vars.

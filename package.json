@@ -17,12 +17,14 @@
     "firebase": "^12.9.0",
     "firebase-admin": "^13.6.1",
     "idb-keyval": "^6.2.2",
+    "mammoth": "^1.11.0",
     "next": "16.1.6",
     "openai": "^6.21.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "vcard-parser": "^1.0.0",
     "web-push": "^3.6.7",
+    "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {

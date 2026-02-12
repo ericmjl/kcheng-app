@@ -30,9 +30,11 @@ A Progressive Web App (PWA) for a single China trip: calendar, reminders, contac
      - **API keys:** `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FINNHUB_API_KEY`
      - **Push (optional):** `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (generate with `npx web-push generate-vapid-keys`)
 
-3. **Firebase**
-   - Create a project at [Firebase Console](https://console.firebase.google.com). Enable Authentication (Anonymous sign-in) and Firestore.
-   - Add the client config to Vercel as above. For the server, create a service account (Project settings → Service accounts), download the JSON, and set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` (paste the private key string; escape newlines as `\n` in Vercel).
+3. **Firebase (required for calendar, contacts, todos, and assistant)**
+   - If users see “The assistant isn’t available” or data doesn’t load, Firebase isn’t set up yet. Do the following:
+   - Create a project at [Firebase Console](https://console.firebase.google.com). Enable **Authentication** → Sign-in method → **Anonymous** (so users get a session without a sign-up form). Enable **Firestore** (Create database; start in test mode for dev, then add rules before production).
+   - **Client config:** In Project settings → General, under “Your apps”, add a web app. Copy the config and set in Vercel (or `.env.local`): `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`, `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`.
+   - **Server (Admin) config:** Project settings → Service accounts → Generate new private key. From the JSON, set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` (use the `private_key` value; in Vercel, paste as one line with `\n` for newlines).
 
 4. **In the app**
    - Open **Settings**. Enter your **trip start** and **trip end** dates and timezone. Optionally paste API keys (Claude, OpenAI, Finnhub) if you prefer not to use env vars.

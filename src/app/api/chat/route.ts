@@ -3,6 +3,10 @@ import { streamText, tool, stepCountIs, convertToModelMessages, type UIMessage }
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { verifyIdToken, getAdminDb } from "@/lib/firebase-admin";
+import {
+  isParseableDoc,
+  parseDocumentFromDataUrl,
+} from "@/lib/parse-document";
 
 async function getUid(request: NextRequest): Promise<string | null> {
   const authHeader = request.headers.get("authorization");
@@ -41,11 +45,19 @@ function todosRef(uid: string) {
   return db.collection("userSettings").doc(uid).collection("todos");
 }
 
-const systemPrompt = `You are a helpful assistant for a China trip planner. You can create contacts, calendar events, and todos from natural language.
+const systemPrompt = `You are a helpful assistant for a China trip planner. You can create contacts, calendar events, and todos from natural language or from uploaded Excel/Word documents.
 
+Natural language:
 - When the user says they met someone (e.g. "I just met John from Acme Corp"), use createContact with name and company (and role/notes if mentioned).
 - When the user says they are meeting someone or have an appointment (e.g. "I'm meeting Jane on Tuesday at 3pm at the hotel"), use createEvent with title, start (ISO datetime), and optionally location and notes.
 - When the user says they want to follow up or have a todo (e.g. "I need to follow up with John on the proposal"), use createTodo with the task text and optional dueDate (ISO date).
+
+Uploaded Excel or Word files:
+- The user may attach an Excel (.xlsx) or Word (.docx) file. The parsed content will appear in their message as structured text (e.g. JSON rows for spreadsheets, plain text for Word).
+- Interpret the content and call createContact, createEvent, and/or createTodo as appropriate. Match columns/fields to our schema: contacts (name, company, role, phone, email, notes), events (title, start, end, location, notes), todos (text, dueDate).
+- For spreadsheets: each row often represents one contact, one event, or one todo; use header names to map to the right tool and fields. Create one tool call per row (or batch if the format is clearly a list).
+- For Word: extract names, meetings, dates, and action items from the text and create the corresponding contacts, events, and todos.
+- Use ISO 8601 for dates/times when calling createEvent and createTodo. Infer today's date for relative references.
 
 Use relative dates based on today when the user says "next Tuesday", "tomorrow", etc. Prefer being helpful: infer missing fields when reasonable and confirm what you did in a short reply.`;
 
@@ -86,7 +98,40 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const rawMessages = (Array.isArray(body?.messages) ? body.messages : []) as Array<Omit<UIMessage, "id">>;
+  let rawMessages = (Array.isArray(body?.messages) ? body.messages : []) as Array<Omit<UIMessage, "id">>;
+
+  // Preprocess: parse Excel/Word file parts into text so the model can create contacts/events/todos
+  rawMessages = await Promise.all(
+    rawMessages.map(async (msg) => {
+      if (msg.role !== "user" || !Array.isArray(msg.parts)) return msg;
+      const newParts = await Promise.all(
+        msg.parts.map(async (part) => {
+          if (
+            typeof part === "object" &&
+            part !== null &&
+            (part as { type?: string }).type === "file"
+          ) {
+            const p = part as { mediaType?: string; url?: string };
+            const mediaType = p.mediaType ?? "";
+            const url = p.url ?? "";
+            if (isParseableDoc(mediaType) && url.startsWith("data:")) {
+              const parsed = await parseDocumentFromDataUrl(url, mediaType);
+              if (parsed) {
+                const label = parsed.kind === "excel" ? "Spreadsheet content" : "Document content";
+                return {
+                  type: "text" as const,
+                  text: `[${label} from uploaded file]\n\n${parsed.text}`,
+                };
+              }
+            }
+          }
+          return part;
+        })
+      );
+      return { ...msg, parts: newParts };
+    })
+  );
+
   const modelMessages = await convertToModelMessages(rawMessages);
 
   const anthropicProvider = createAnthropic({ apiKey });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { WhatsNext } from "./WhatsNext";
 import type { Event } from "@/lib/types";
@@ -8,23 +8,27 @@ import type { Event } from "@/lib/types";
 export function HomeContent() {
   const [events, setEvents] = useState<Event[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/events", { credentials: "include" });
-        if (res.ok && !cancelled) {
-          const data = await res.json();
-          setEvents(Array.isArray(data) ? data : []);
-        }
-      } catch {
-        // ignore
+  const loadEvents = useCallback(async () => {
+    try {
+      const res = await fetch("/api/events", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setEvents(Array.isArray(data) ? data : []);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    } catch {
+      // ignore
+    }
   }, []);
+
+  useEffect(() => {
+    loadEvents();
+  }, [loadEvents]);
+
+  useEffect(() => {
+    const onDataChanged = () => loadEvents();
+    window.addEventListener("trip-assistant:data-changed", onDataChanged);
+    return () => window.removeEventListener("trip-assistant:data-changed", onDataChanged);
+  }, [loadEvents]);
 
   return (
     <>

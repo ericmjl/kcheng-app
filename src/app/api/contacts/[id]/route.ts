@@ -1,29 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase-admin";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { getConvexClient, api } from "@/lib/convex-server";
 import { getUid } from "@/lib/workos-auth";
-import type { Contact } from "@/lib/types";
-
-function contactRef(uid: string, contactId: string) {
-  const db = getAdminDb();
-  if (!db) return null;
-  return db.collection("userSettings").doc(uid).collection("contacts").doc(contactId);
-}
-
-function toContact(id: string, data: Record<string, unknown>): Contact {
-  return {
-    id,
-    name: (data.name as string) ?? "",
-    company: data.company as string | undefined,
-    role: data.role as string | undefined,
-    phone: data.phone as string | undefined,
-    email: data.email as string | undefined,
-    stockTicker: data.stockTicker as string | undefined,
-    notes: data.notes as string | undefined,
-    eventIds: Array.isArray(data.eventIds) ? (data.eventIds as string[]) : [],
-    createdAt: (data.createdAt as string) ?? "",
-    updatedAt: (data.updatedAt as string) ?? "",
-  };
-}
 
 export async function GET(
   request: NextRequest,
@@ -31,12 +9,11 @@ export async function GET(
 ) {
   const uid = await getUid(request);
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const ref = contactRef(uid, (await params).id);
-  if (!ref) return NextResponse.json({ error: "Server not configured" }, { status: 503 });
   try {
-    const snap = await ref.get();
-    if (!snap.exists) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json(toContact(ref.id, snap.data()!));
+    const client = await getConvexClient(uid);
+    const doc = await client.query(api.contacts.get, { id: (await params).id as any });
+    if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(doc);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to load contact" }, { status: 500 });
@@ -49,24 +26,24 @@ export async function PATCH(
 ) {
   const uid = await getUid(request);
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const ref = contactRef(uid, (await params).id);
-  if (!ref) return NextResponse.json({ error: "Server not configured" }, { status: 503 });
   try {
     const body = await request.json();
-    const updates: Record<string, unknown> = {
-      updatedAt: new Date().toISOString(),
-    };
+    const updates: Record<string, unknown> = {};
     if (body.name !== undefined) updates.name = String(body.name).trim();
-    if (body.company !== undefined) updates.company = body.company ? String(body.company).trim() : null;
-    if (body.role !== undefined) updates.role = body.role ? String(body.role).trim() : null;
-    if (body.phone !== undefined) updates.phone = body.phone ? String(body.phone).trim() : null;
-    if (body.email !== undefined) updates.email = body.email ? String(body.email).trim() : null;
-    if (body.stockTicker !== undefined) updates.stockTicker = body.stockTicker ? String(body.stockTicker).trim() : null;
-    if (body.notes !== undefined) updates.notes = body.notes ? String(body.notes).trim() : null;
+    if (body.company !== undefined) updates.company = body.company ? String(body.company).trim() : undefined;
+    if (body.role !== undefined) updates.role = body.role ? String(body.role).trim() : undefined;
+    if (body.phone !== undefined) updates.phone = body.phone ? String(body.phone).trim() : undefined;
+    if (body.email !== undefined) updates.email = body.email ? String(body.email).trim() : undefined;
+    if (body.stockTicker !== undefined) updates.stockTicker = body.stockTicker ? String(body.stockTicker).trim() : undefined;
+    if (body.notes !== undefined) updates.notes = body.notes ? String(body.notes).trim() : undefined;
     if (Array.isArray(body.eventIds)) updates.eventIds = body.eventIds;
-    await ref.update(updates);
-    const snap = await ref.get();
-    return NextResponse.json(toContact(ref.id, { ...snap.data(), ...updates }));
+
+    const client = await getConvexClient(uid);
+    const doc = await client.mutation(api.contacts.update, {
+      id: (await params).id as any,
+      ...updates,
+    });
+    return NextResponse.json(doc);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to update contact" }, { status: 500 });
@@ -79,10 +56,9 @@ export async function DELETE(
 ) {
   const uid = await getUid(request);
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const ref = contactRef(uid, (await params).id);
-  if (!ref) return NextResponse.json({ error: "Server not configured" }, { status: 503 });
   try {
-    await ref.delete();
+    const client = await getConvexClient(uid);
+    await client.mutation(api.contacts.remove, { id: (await params).id as any });
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);

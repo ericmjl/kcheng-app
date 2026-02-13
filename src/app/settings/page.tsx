@@ -13,8 +13,10 @@ export default function SettingsPage() {
     anthropic?: string;
     openai?: string;
     finnhub?: string;
+    elevenlabs?: string;
   }>({});
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [serverReady, setServerReady] = useState(false);
 
@@ -48,6 +50,7 @@ export default function SettingsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaved(false);
+    setSaveError(null);
     const payload: Partial<UserSettingsDoc> = {
       tripStart,
       tripEnd,
@@ -56,6 +59,7 @@ export default function SettingsPage() {
         anthropic: apiKeys.anthropic || undefined,
         openai: apiKeys.openai || undefined,
         finnhub: apiKeys.finnhub || undefined,
+        elevenlabs: apiKeys.elevenlabs || undefined,
       },
     };
 
@@ -67,13 +71,17 @@ export default function SettingsPage() {
         credentials: "include",
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Save failed");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        const message = data.error ?? `Save failed (${res.status})`;
+        setSaveError(res.status === 401 ? "Sign in to save trip dates to your account." : message);
+        return;
+      }
+      setSaved(true);
     } catch (err) {
       console.error(err);
-      setSaved(false);
-      return;
+      setSaveError("Network or server error. Your settings were saved locally.");
     }
-    setSaved(true);
   }
 
   if (loading) {
@@ -159,7 +167,21 @@ export default function SettingsPage() {
             </div>
             <div>
               <label className="mb-1 block text-sm text-[var(--text-muted)]">
-                OpenAI (Whisper)
+                ElevenLabs (voice transcription)
+              </label>
+              <input
+                type="password"
+                placeholder="API key from elevenlabs.io"
+                value={apiKeys.elevenlabs ?? ""}
+                onChange={(e) =>
+                  setApiKeys((k) => ({ ...k, elevenlabs: e.target.value }))
+                }
+                className="w-full rounded-lg border-2 border-[var(--mint-soft)] bg-[var(--cream)] px-3 py-2 text-[var(--text)] placeholder-[var(--text-muted)]"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-[var(--text-muted)]">
+                OpenAI (Whisper, voice transcription)
               </label>
               <input
                 type="password"
@@ -188,6 +210,12 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {saveError && (
+          <div className="rounded-lg border border-[var(--coral)] bg-[var(--coral)]/10 px-4 py-3 text-sm text-[var(--text)]">
+            <p className="font-medium text-[var(--coral)]">Couldn’t save to account</p>
+            <p className="mt-1">{saveError}</p>
+          </div>
+        )}
         <div className="flex items-center gap-4">
           <button
             type="submit"

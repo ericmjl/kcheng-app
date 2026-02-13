@@ -42,6 +42,12 @@ export default function ContactsPage() {
     loadContacts();
   }, [loadContacts]);
 
+  useEffect(() => {
+    const onDataChanged = () => loadContacts();
+    window.addEventListener("trip-assistant:data-changed", onDataChanged);
+    return () => window.removeEventListener("trip-assistant:data-changed", onDataChanged);
+  }, [loadContacts]);
+
   function openNew() {
     setEditing(null);
     setSelected(null);

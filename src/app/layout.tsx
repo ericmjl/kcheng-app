@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import "./globals.css";
+import { ConvexProviderWithWorkOS } from "./components/ConvexProviderWithWorkOS";
 import { Nav } from "./components/Nav";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
+import { TripAssistantBubble } from "./components/TripAssistantBubble";
 import { getInitialAuth } from "@/lib/workos-auth";
 
 const geistSans = Geist({
@@ -34,11 +36,14 @@ export default async function RootLayout({
         style={{ background: "var(--wall)" }}
       >
         <AuthKitProvider initialAuth={initialAuth}>
-          <div className="relative z-10">
-            <ServiceWorkerRegister />
-            <Nav />
-            {children}
-          </div>
+          <ConvexProviderWithWorkOS>
+            <div className="relative z-10">
+              <ServiceWorkerRegister />
+              <Nav />
+              {children}
+            </div>
+            <TripAssistantBubble />
+          </ConvexProviderWithWorkOS>
         </AuthKitProvider>
       </body>
     </html>

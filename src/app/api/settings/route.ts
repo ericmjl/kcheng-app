@@ -1,31 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase-admin";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { getConvexClient, api } from "@/lib/convex-server";
 import { getUid } from "@/lib/workos-auth";
 import type { UserSettingsDoc } from "@/lib/types";
-
-const SETTINGS_COLLECTION = "userSettings";
 
 export async function GET(request: NextRequest) {
   const uid = await getUid(request);
   if (!uid) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const db = getAdminDb();
-  if (!db) {
-    return NextResponse.json(
-      { error: "Server not configured for persistence" },
-      { status: 503 }
-    );
-  }
   try {
-    const doc = await db.collection(SETTINGS_COLLECTION).doc(uid).get();
-    const data = doc.data() as UserSettingsDoc | undefined;
-    const defaults: UserSettingsDoc = {
-      tripStart: "",
-      tripEnd: "",
-      timezone: "Asia/Shanghai",
+    const client = await getConvexClient(uid);
+    const data = await client.query(api.userSettings.get);
+    const out: UserSettingsDoc = {
+      tripStart: data?.tripStart ?? "",
+      tripEnd: data?.tripEnd ?? "",
+      timezone: data?.timezone ?? "Asia/Shanghai",
+      apiKeys: data?.apiKeys,
+      savedPlaces: data?.savedPlaces,
     };
-    return NextResponse.json({ ...defaults, ...data });
+    return NextResponse.json(out);
   } catch (e) {
     console.error(e);
     return NextResponse.json(
@@ -40,16 +34,15 @@ export async function POST(request: NextRequest) {
   if (!uid) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const db = getAdminDb();
-  if (!db) {
-    return NextResponse.json(
-      { error: "Server not configured for persistence" },
-      { status: 503 }
-    );
-  }
   try {
     const body = await request.json();
-    const updates: Partial<UserSettingsDoc> = {};
+    const updates: {
+      tripStart?: string;
+      tripEnd?: string;
+      timezone?: string;
+      apiKeys?: { anthropic?: string; openai?: string; finnhub?: string; elevenlabs?: string };
+      savedPlaces?: Array<{ id: string; label: string; address: string; createdAt: string; updatedAt: string }>;
+    } = {};
     if (typeof body.tripStart === "string") updates.tripStart = body.tripStart;
     if (typeof body.tripEnd === "string") updates.tripEnd = body.tripEnd;
     if (typeof body.timezone === "string") updates.timezone = body.timezone;
@@ -58,14 +51,22 @@ export async function POST(request: NextRequest) {
         anthropic: body.apiKeys.anthropic ?? undefined,
         openai: body.apiKeys.openai ?? undefined,
         finnhub: body.apiKeys.finnhub ?? undefined,
+        elevenlabs: body.apiKeys.elevenlabs ?? undefined,
       };
     }
     if (Array.isArray(body.savedPlaces)) updates.savedPlaces = body.savedPlaces;
-    await db.collection(SETTINGS_COLLECTION).doc(uid).set(updates, {
-      merge: true,
-    });
-    const doc = await db.collection(SETTINGS_COLLECTION).doc(uid).get();
-    return NextResponse.json(doc.data());
+
+    const client = await getConvexClient(uid);
+    await client.mutation(api.userSettings.set, updates);
+    const data = await client.query(api.userSettings.get);
+    const out: UserSettingsDoc = {
+      tripStart: data?.tripStart ?? "",
+      tripEnd: data?.tripEnd ?? "",
+      timezone: data?.timezone ?? "Asia/Shanghai",
+      apiKeys: data?.apiKeys,
+      savedPlaces: data?.savedPlaces,
+    };
+    return NextResponse.json(out);
   } catch (e) {
     console.error(e);
     return NextResponse.json(

@@ -1,8 +1,8 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { streamText, tool, stepCountIs, convertToModelMessages, type UIMessage } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getConvexClient, api } from "@/lib/convex-server";
 import {
   isParseableDoc,
   parseDocumentFromDataUrl,
@@ -13,46 +13,60 @@ async function getClaudeKey(uid: string | null): Promise<string | null> {
   const fromEnv = process.env.ANTHROPIC_API_KEY;
   if (fromEnv) return fromEnv;
   if (!uid) return null;
-  const db = getAdminDb();
-  if (!db) return null;
-  const doc = await db.collection("userSettings").doc(uid).get();
-  const data = doc.data();
-  return (data?.apiKeys as { anthropic?: string } | undefined)?.anthropic ?? null;
+  try {
+    const client = await getConvexClient(uid);
+    const settings = await client.query(api.userSettings.get);
+    return (settings?.apiKeys as { anthropic?: string } | undefined)?.anthropic ?? null;
+  } catch {
+    return null;
+  }
 }
 
-function contactsRef(uid: string) {
-  const db = getAdminDb();
-  if (!db) return null;
-  return db.collection("userSettings").doc(uid).collection("contacts");
-}
+const SYSTEM_PROMPT_BASE = `You are a helpful assistant for a China trip planner. You create contacts, calendar events, and todos by calling tools. You MUST call the tools—never just describe what you would do in text.
 
-function eventsRef(uid: string) {
-  const db = getAdminDb();
-  if (!db) return null;
-  return db.collection("userSettings").doc(uid).collection("events");
-}
-
-function todosRef(uid: string) {
-  const db = getAdminDb();
-  if (!db) return null;
-  return db.collection("userSettings").doc(uid).collection("todos");
-}
-
-const systemPrompt = `You are a helpful assistant for a China trip planner. You can create contacts, calendar events, and todos from natural language or from uploaded Excel/Word documents.
-
-Natural language:
-- When the user says they met someone (e.g. "I just met John from Acme Corp"), use createContact with name and company (and role/notes if mentioned).
-- When the user says they are meeting someone or have an appointment (e.g. "I'm meeting Jane on Tuesday at 3pm at the hotel"), use createEvent with title, start (ISO datetime), and optionally location and notes.
-- When the user says they want to follow up or have a todo (e.g. "I need to follow up with John on the proposal"), use createTodo with the task text and optional dueDate (ISO date).
+Rules:
+- When the user mentions meeting someone (e.g. "meeting with Lee Wei at 3pm", "I have a meeting with Jane on Tuesday at 2pm"): (1) call createContact with the person's name, (2) call createEvent with a title like "Meeting with [Name]", start as ISO 8601 datetime, and optionally location/notes. Always create both the contact and the event.
+- When the user says they met someone (e.g. "I just met John from Acme Corp"): call createContact with name and company (and role/notes if mentioned).
+- When the user says they want to follow up or have a todo: call createTodo with the task text and optional dueDate (ISO date).
+- Use ISO 8601 for all dates/times. When the user says "today", "tomorrow", or gives only a time (e.g. "3pm"), use a date within the trip range (see below).
+- After calling tools, briefly confirm what you created.
 
 Uploaded Excel or Word files:
-- The user may attach an Excel (.xlsx) or Word (.docx) file. The parsed content will appear in their message as structured text (e.g. JSON rows for spreadsheets, plain text for Word).
-- Interpret the content and call createContact, createEvent, and/or createTodo as appropriate. Match columns/fields to our schema: contacts (name, company, role, phone, email, notes), events (title, start, end, location, notes), todos (text, dueDate).
-- For spreadsheets: each row often represents one contact, one event, or one todo; use header names to map to the right tool and fields. Create one tool call per row (or batch if the format is clearly a list).
-- For Word: extract names, meetings, dates, and action items from the text and create the corresponding contacts, events, and todos.
-- Use ISO 8601 for dates/times when calling createEvent and createTodo. Infer today's date for relative references.
+- The user may attach an Excel (.xlsx) or Word (.docx) file. The parsed content will appear in their message as structured text.
+- Interpret the content and call createContact, createEvent, and/or createTodo as appropriate. Create one tool call per row or per extracted item.
+- Use ISO 8601 for dates/times. All event and todo dates must fall within the user's trip range.
 
-Use relative dates based on today when the user says "next Tuesday", "tomorrow", etc. Prefer being helpful: infer missing fields when reasonable and confirm what you did in a short reply.`;
+Always call the tools; do not skip tool calls.`;
+
+/** Returns YYYY-MM-DD from an ISO date or datetime string. */
+function datePart(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+/** True if the date part of iso is within [tripStart, tripEnd] (inclusive). */
+function isWithinTripRange(iso: string, tripStart: string, tripEnd: string): boolean {
+  const d = datePart(iso);
+  return tripStart <= d && d <= tripEnd;
+}
+
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** Build a short date reference so the model maps "this Saturday" etc. to the correct date. */
+function buildDateReference(): string {
+  const today = new Date();
+  const lines: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const weekday = WEEKDAY_NAMES[d.getDay()];
+    const label = i === 0 ? "Today" : i === 1 ? "Tomorrow" : `In ${i} days`;
+    lines.push(`${label}: ${weekday}, ${y}-${m}-${day}`);
+  }
+  return lines.join(". ");
+}
 
 export async function POST(request: NextRequest) {
   const uid = await getUid(request);
@@ -71,15 +85,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const contacts = contactsRef(uid);
-  const events = eventsRef(uid);
-  const todos = todosRef(uid);
-  if (!contacts || !events || !todos) {
-    return new Response(
-      JSON.stringify({ error: "Server not configured" }),
-      { status: 503, headers: { "Content-Type": "application/json" } }
-    );
-  }
+  const convexClient = await getConvexClient(uid);
+
+  const settings = await convexClient.query(api.userSettings.get);
+  const tripStart = (settings?.tripStart ?? "").trim();
+  const tripEnd = (settings?.tripEnd ?? "").trim();
+  const hasTripRange = tripStart && tripEnd && tripStart <= tripEnd;
+
+  const tripRangeInstruction = hasTripRange
+    ? `\n\nTRIP DATE RANGE (you must respect this): The user's trip is from ${tripStart} to ${tripEnd}. You MUST only create calendar events and todo due dates that fall within this range. When the user says "today", "tomorrow", or gives only a time (e.g. "3pm"), interpret as a date within this trip—e.g. use the first day of the trip for "today" or when only time is given. Never use dates outside ${tripStart}–${tripEnd}.`
+    : "\n\nTRIP DATE RANGE: The user has not set trip start/end in Settings. Do not create events or todos with specific dates until they set a trip range; you can still create contacts and undated todos.";
+
+  const dateRef = buildDateReference();
+  const dateInstruction = `\n\nCURRENT DATE REFERENCE (use this to map weekdays to dates correctly): ${dateRef}. When the user says "this Saturday", "Saturday", "this Sunday", etc., use the YYYY-MM-DD that is actually that weekday—e.g. if Saturday is 2026-02-14 then "this Saturday" must be 2026-02-14, not 2026-02-15. Double-check the weekday name matches the date.`;
+
+  const systemPrompt = SYSTEM_PROMPT_BASE + tripRangeInstruction + dateInstruction;
 
   let body: { messages?: unknown[] };
   try {
@@ -145,21 +165,21 @@ export async function POST(request: NextRequest) {
           notes: z.string().optional(),
         }),
         execute: async ({ name, company, role, phone, email, notes }) => {
-          const now = new Date().toISOString();
-          const doc = {
-            name: String(name ?? "").trim(),
-            company: company ? String(company).trim() : null,
-            role: role ? String(role).trim() : null,
-            phone: phone ? String(phone).trim() : null,
-            email: email ? String(email).trim() : null,
-            stockTicker: null,
-            notes: notes ? String(notes).trim() : null,
-            eventIds: [],
-            createdAt: now,
-            updatedAt: now,
-          };
-          const res = await contacts.add(doc);
-          return { id: res.id, ...doc };
+          try {
+            const doc = await convexClient.mutation(api.contacts.create, {
+              name: String(name ?? "").trim(),
+              company: company ? String(company).trim() : undefined,
+              role: role ? String(role).trim() : undefined,
+              phone: phone ? String(phone).trim() : undefined,
+              email: email ? String(email).trim() : undefined,
+              notes: notes ? String(notes).trim() : undefined,
+            });
+            console.log("[chat] createContact ok:", name, doc?._id);
+            return doc ?? { id: "", name: String(name ?? "").trim() };
+          } catch (e) {
+            console.error("[chat] createContact error:", name, e);
+            throw e;
+          }
         },
       }),
       createEvent: tool({
@@ -172,19 +192,42 @@ export async function POST(request: NextRequest) {
           notes: z.string().optional(),
         }),
         execute: async ({ title, start, end, location, notes }) => {
-          const now = new Date().toISOString();
-          const doc = {
-            title: String(title ?? ""),
-            start: String(start ?? now),
-            end: end ? String(end) : null,
-            location: location ? String(location) : null,
-            contactId: null,
-            notes: notes ? String(notes) : null,
-            createdAt: now,
-            updatedAt: now,
-          };
-          const res = await events.add(doc);
-          return { id: res.id, ...doc };
+          try {
+            if (!hasTripRange) {
+              const err = new Error(
+                "The user has not set a trip date range in Settings. Ask them to set trip start and end in Settings so events can be created within that range."
+              );
+              console.warn("[chat] createEvent rejected (no trip range)");
+              throw err;
+            }
+            const startStr = String(start ?? new Date().toISOString());
+            if (!isWithinTripRange(startStr, tripStart, tripEnd)) {
+              const err = new Error(
+                `Event date ${datePart(startStr)} is outside the trip range (${tripStart}–${tripEnd}). Use a date within that range.`
+              );
+              console.warn("[chat] createEvent rejected (out of range):", title, startStr);
+              throw err;
+            }
+            if (end && !isWithinTripRange(end, tripStart, tripEnd)) {
+              const err = new Error(
+                `Event end date ${datePart(end)} is outside the trip range (${tripStart}–${tripEnd}). Use a date within that range.`
+              );
+              console.warn("[chat] createEvent rejected (end out of range):", title, end);
+              throw err;
+            }
+            const doc = await convexClient.mutation(api.events.create, {
+              title: String(title ?? ""),
+              start: startStr,
+              end: end ? String(end) : undefined,
+              location: location ? String(location) : undefined,
+              notes: notes ? String(notes) : undefined,
+            });
+            console.log("[chat] createEvent ok:", title, startStr, doc?._id);
+            return doc ?? { id: "", title: String(title ?? ""), start: startStr };
+          } catch (e) {
+            console.error("[chat] createEvent error:", title, e);
+            throw e;
+          }
         },
       }),
       createTodo: tool({
@@ -194,16 +237,33 @@ export async function POST(request: NextRequest) {
           dueDate: z.string().optional().describe("Due date in ISO 8601 date format (YYYY-MM-DD)"),
         }),
         execute: async ({ text, dueDate }) => {
-          const now = new Date().toISOString();
-          const doc = {
-            text: String(text ?? "").trim(),
-            done: false,
-            dueDate: dueDate ? String(dueDate) : null,
-            createdAt: now,
-            updatedAt: now,
-          };
-          const res = await todos.add(doc);
-          return { id: res.id, ...doc };
+          try {
+            if (dueDate) {
+              if (!hasTripRange) {
+                const err = new Error(
+                  "The user has not set a trip date range in Settings. Create the todo without a due date, or ask them to set trip start and end in Settings."
+                );
+                console.warn("[chat] createTodo rejected (no trip range, has dueDate)");
+                throw err;
+              }
+              if (!isWithinTripRange(dueDate, tripStart, tripEnd)) {
+                const err = new Error(
+                  `Todo due date ${datePart(dueDate)} is outside the trip range (${tripStart}–${tripEnd}). Use a date within that range.`
+                );
+                console.warn("[chat] createTodo rejected (out of range):", text.slice(0, 40), dueDate);
+                throw err;
+              }
+            }
+            const doc = await convexClient.mutation(api.todos.create, {
+              text: String(text ?? "").trim(),
+              dueDate: dueDate ? String(dueDate) : undefined,
+            });
+            console.log("[chat] createTodo ok:", text.slice(0, 40), doc?._id);
+            return doc ?? { id: "", text: String(text ?? "").trim(), done: false };
+          } catch (e) {
+            console.error("[chat] createTodo error:", text.slice(0, 40), e);
+            throw e;
+          }
         },
       }),
     },

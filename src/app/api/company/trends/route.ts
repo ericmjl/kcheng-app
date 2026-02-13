@@ -1,16 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase-admin";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { getConvexClient, api } from "@/lib/convex-server";
 import { getUid } from "@/lib/workos-auth";
 
 async function getFinnhubKey(uid: string | null): Promise<string | null> {
   const fromEnv = process.env.FINNHUB_API_KEY;
   if (fromEnv) return fromEnv;
   if (!uid) return null;
-  const db = getAdminDb();
-  if (!db) return null;
-  const doc = await db.collection("userSettings").doc(uid).get();
-  const data = doc.data();
-  return (data?.apiKeys as { finnhub?: string } | undefined)?.finnhub ?? null;
+  try {
+    const client = await getConvexClient(uid);
+    const settings = await client.query(api.userSettings.get);
+    return (settings?.apiKeys as { finnhub?: string } | undefined)?.finnhub ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(request: NextRequest) {

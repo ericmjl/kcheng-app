@@ -1,12 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase-admin";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { getConvexClient, api } from "@/lib/convex-server";
 import { getUid } from "@/lib/workos-auth";
-
-function eventRef(uid: string, eventId: string) {
-  const db = getAdminDb();
-  if (!db) return null;
-  return db.collection("userSettings").doc(uid).collection("events").doc(eventId);
-}
 
 export async function PATCH(
   request: NextRequest,
@@ -14,27 +9,19 @@ export async function PATCH(
 ) {
   const uid = await getUid(request);
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const ref = eventRef(uid, (await params).id);
-  if (!ref) return NextResponse.json({ error: "Server not configured" }, { status: 503 });
   try {
     const body = await request.json();
-    const updates: Record<string, unknown> = {
-      updatedAt: new Date().toISOString(),
-    };
-    if (body.title !== undefined) updates.title = String(body.title);
-    if (body.start !== undefined) updates.start = String(body.start);
-    if (body.end !== undefined) updates.end = body.end ? String(body.end) : null;
-    if (body.location !== undefined) updates.location = body.location ? String(body.location) : null;
-    if (body.contactId !== undefined) updates.contactId = body.contactId ?? null;
-    if (body.notes !== undefined) updates.notes = body.notes ? String(body.notes) : null;
-    await ref.update(updates);
-    const snap = await ref.get();
-    const data = snap.data();
-    return NextResponse.json({
-      id: ref.id,
-      ...data,
-      updatedAt: updates.updatedAt,
-    });
+    const id = (await params).id;
+    const args: { id: string; title?: string; start?: string; end?: string; location?: string; contactId?: string; notes?: string } = { id };
+    if (body.title !== undefined) args.title = String(body.title);
+    if (body.start !== undefined) args.start = String(body.start);
+    if (body.end !== undefined) args.end = body.end ? String(body.end) : undefined;
+    if (body.location !== undefined) args.location = body.location ? String(body.location) : undefined;
+    if (body.contactId !== undefined) args.contactId = body.contactId ?? undefined;
+    if (body.notes !== undefined) args.notes = body.notes ? String(body.notes) : undefined;
+    const client = await getConvexClient(uid);
+    const doc = await client.mutation(api.events.update, args as any);
+    return NextResponse.json(doc);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to update event" }, { status: 500 });
@@ -47,10 +34,9 @@ export async function DELETE(
 ) {
   const uid = await getUid(request);
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const ref = eventRef(uid, (await params).id);
-  if (!ref) return NextResponse.json({ error: "Server not configured" }, { status: 503 });
   try {
-    await ref.delete();
+    const client = await getConvexClient(uid);
+    await client.mutation(api.events.remove, { id: (await params).id as any });
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);

@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase-admin";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { getConvexClient, api } from "@/lib/convex-server";
 import { getUid } from "@/lib/workos-auth";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -7,11 +8,13 @@ async function getClaudeKey(uid: string | null): Promise<string | null> {
   const fromEnv = process.env.ANTHROPIC_API_KEY;
   if (fromEnv) return fromEnv;
   if (!uid) return null;
-  const db = getAdminDb();
-  if (!db) return null;
-  const doc = await db.collection("userSettings").doc(uid).get();
-  const data = doc.data();
-  return (data?.apiKeys as { anthropic?: string } | undefined)?.anthropic ?? null;
+  try {
+    const client = await getConvexClient(uid);
+    const settings = await client.query(api.userSettings.get);
+    return (settings?.apiKeys as { anthropic?: string } | undefined)?.anthropic ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(request: NextRequest) {

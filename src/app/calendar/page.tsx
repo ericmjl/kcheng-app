@@ -25,6 +25,22 @@ function getTripDays(tripStart: string, tripEnd: string): Date[] {
   }
 }
 
+/** Trip days plus any day that has at least one event (so chat-created events outside the trip range still show). */
+function getSelectableDays(tripDays: Date[], events: Event[]): Date[] {
+  const byDayKey = new Map<string, Date>();
+  for (const d of tripDays) byDayKey.set(format(d, "yyyy-MM-dd"), d);
+  for (const e of events) {
+    try {
+      const d = startOfDay(parseISO(e.start));
+      const key = format(d, "yyyy-MM-dd");
+      if (!byDayKey.has(key)) byDayKey.set(key, d);
+    } catch {
+      /* ignore bad start */
+    }
+  }
+  return Array.from(byDayKey.values()).sort((a, b) => a.getTime() - b.getTime());
+}
+
 function eventsForDay(events: Event[], day: Date): Event[] {
   return events.filter((e) => {
     try {
@@ -70,10 +86,24 @@ export default function CalendarPage() {
     loadSettingsAndEvents();
   }, [loadSettingsAndEvents]);
 
+  useEffect(() => {
+    const onDataChanged = () => loadSettingsAndEvents();
+    window.addEventListener("trip-assistant:data-changed", onDataChanged);
+    return () => window.removeEventListener("trip-assistant:data-changed", onDataChanged);
+  }, [loadSettingsAndEvents]);
+
+  useEffect(() => {
+    const onFocus = () => loadSettingsAndEvents();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [loadSettingsAndEvents]);
+
   const tripDays = getTripDays(tripStart, tripEnd);
+  const selectableDays = getSelectableDays(tripDays, events);
   const selectedDayEvents = selectedDay
     ? eventsForDay(events, selectedDay)
     : [];
+  const hasTripRange = Boolean(tripStart && tripEnd);
 
   async function saveEvent(e: React.FormEvent) {
     e.preventDefault();
@@ -152,7 +182,7 @@ export default function CalendarPage() {
     );
   }
 
-  if (!tripStart || !tripEnd) {
+  if (!hasTripRange && selectableDays.length === 0) {
     return (
       <main className="mx-auto max-w-4xl p-6">
         <h1 className="text-2xl font-semibold text-[var(--text)]">Calendar</h1>
@@ -161,7 +191,7 @@ export default function CalendarPage() {
           <a href="/settings" className="text-[var(--text-muted)] hover:underline">
             Settings
           </a>{" "}
-          to see your calendar.
+          to see your calendar, or add events via the trip assistant.
         </p>
       </main>
     );
@@ -173,10 +203,10 @@ export default function CalendarPage() {
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <aside>
           <h2 className="mb-2 text-sm font-medium text-[var(--text-muted)]">
-            Days in China
+            Days in China {tripDays.length !== selectableDays.length && "(+ dates with events)"}
           </h2>
           <ul className="max-h-[60vh] space-y-1 overflow-y-auto rounded border border-[var(--mint-soft)] bg-[var(--cream)] p-2">
-            {tripDays.map((day) => (
+            {selectableDays.map((day) => (
               <li key={day.toISOString()}>
                 <button
                   type="button"

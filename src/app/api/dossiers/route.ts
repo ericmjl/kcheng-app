@@ -1,41 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase-admin";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { getConvexClient, api } from "@/lib/convex-server";
 import { getUid } from "@/lib/workos-auth";
-import type { MeetingDossier } from "@/lib/types";
-
-function dossiersRef(uid: string) {
-  const db = getAdminDb();
-  if (!db) return null;
-  return db.collection("userSettings").doc(uid).collection("dossiers");
-}
-
-function toDossier(id: string, data: Record<string, unknown>): MeetingDossier {
-  return {
-    id,
-    contactId: (data.contactId as string) ?? "",
-    eventId: data.eventId as string | undefined,
-    transcript: data.transcript as string | undefined,
-    summary: data.summary as string | undefined,
-    actionItems: Array.isArray(data.actionItems) ? (data.actionItems as string[]) : undefined,
-    recordingUrl: data.recordingUrl as string | undefined,
-    createdAt: (data.createdAt as string) ?? "",
-    updatedAt: (data.updatedAt as string) ?? "",
-  };
-}
 
 export async function GET(request: NextRequest) {
   const uid = await getUid(request);
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const ref = dossiersRef(uid);
-  if (!ref) return NextResponse.json({ error: "Server not configured" }, { status: 503 });
   const { searchParams } = new URL(request.url);
-  const contactId = searchParams.get("contactId");
+  const contactId = searchParams.get("contactId") ?? undefined;
   try {
-    const snap = await ref.get();
-    let dossiers = snap.docs.map((d) => toDossier(d.id, d.data() as Record<string, unknown>));
-    if (contactId) dossiers = dossiers.filter((d) => d.contactId === contactId);
-    dossiers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    return NextResponse.json(dossiers);
+    const client = await getConvexClient(uid);
+    const list = await client.query(api.dossiers.list, contactId ? { contactId } : {});
+    return NextResponse.json(list ?? []);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to load dossiers" }, { status: 500 });
@@ -45,25 +21,20 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const uid = await getUid(request);
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const ref = dossiersRef(uid);
-  if (!ref) return NextResponse.json({ error: "Server not configured" }, { status: 503 });
   try {
     const body = await request.json();
     const contactId = String(body.contactId ?? "").trim();
     if (!contactId) return NextResponse.json({ error: "contactId required" }, { status: 400 });
-    const now = new Date().toISOString();
-    const doc = {
+    const client = await getConvexClient(uid);
+    const doc = await client.mutation(api.dossiers.create, {
       contactId,
-      eventId: body.eventId ? String(body.eventId) : null,
-      transcript: body.transcript ? String(body.transcript) : null,
-      summary: body.summary ? String(body.summary) : null,
-      actionItems: Array.isArray(body.actionItems) ? body.actionItems : null,
-      recordingUrl: body.recordingUrl ? String(body.recordingUrl) : null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const res = await ref.add(doc);
-    return NextResponse.json({ id: res.id, ...doc });
+      eventId: body.eventId ? String(body.eventId) : undefined,
+      transcript: body.transcript ? String(body.transcript) : undefined,
+      summary: body.summary ? String(body.summary) : undefined,
+      actionItems: Array.isArray(body.actionItems) ? body.actionItems : undefined,
+      recordingUrl: body.recordingUrl ? String(body.recordingUrl) : undefined,
+    });
+    return NextResponse.json(doc);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to create dossier" }, { status: 500 });

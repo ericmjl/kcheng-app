@@ -33,6 +33,12 @@ export default function TodosPage() {
     loadTodos();
   }, [loadTodos]);
 
+  useEffect(() => {
+    const onDataChanged = () => loadTodos();
+    window.addEventListener("trip-assistant:data-changed", onDataChanged);
+    return () => window.removeEventListener("trip-assistant:data-changed", onDataChanged);
+  }, [loadTodos]);
+
   const filtered =
     filter === "today"
       ? todos.filter((t) => t.dueDate && isSameDay(parseISO(t.dueDate), startOfDay(new Date())))

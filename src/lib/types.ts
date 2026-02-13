@@ -8,6 +8,7 @@ export type ApiKeysConfig = {
   anthropic?: string;
   openai?: string;
   finnhub?: string;
+  elevenlabs?: string;
 };
 
 export type Event = {

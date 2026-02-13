@@ -13,14 +13,8 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": [
     "next-env.d.ts",
@@ -30,5 +24,17 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "convex/auth.config.ts",
+    "convex/schema.ts",
+    "convex/contacts.ts",
+    "convex/dossiers.ts",
+    "convex/events.ts",
+    "convex/plannedRoutes.ts",
+    "convex/pushSubscriptions.ts",
+    "convex/todos.ts",
+    "convex/userSettings.ts",
+    "convex/lib/auth.ts"
+  ]
 }

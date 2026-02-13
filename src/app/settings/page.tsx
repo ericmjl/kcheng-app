@@ -10,7 +10,6 @@ export default function SettingsPage() {
   const [tripEnd, setTripEnd] = useState("");
   const [timezone, setTimezone] = useState("Asia/Shanghai");
   const [apiKeys, setApiKeys] = useState<{
-    anthropic?: string;
     openai?: string;
     finnhub?: string;
     elevenlabs?: string;
@@ -56,7 +55,6 @@ export default function SettingsPage() {
       tripEnd,
       timezone,
       apiKeys: {
-        anthropic: apiKeys.anthropic || undefined,
         openai: apiKeys.openai || undefined,
         finnhub: apiKeys.finnhub || undefined,
         elevenlabs: apiKeys.elevenlabs || undefined,
@@ -146,21 +144,21 @@ export default function SettingsPage() {
         <section>
           <h2 className="mb-3 text-lg font-medium text-[var(--text)]">API keys</h2>
           <p className="mb-3 text-sm text-[var(--text-muted)]">
-            Optional: set in Vercel env vars instead (ANTHROPIC_API_KEY,
-            OPENAI_API_KEY, FINNHUB_API_KEY). If you paste here, they are stored
-            in your account or locally.
+            Optional: set in Vercel env vars instead (OPENAI_API_KEY,
+            FINNHUB_API_KEY). If you paste here, they are stored in your account
+            or locally.
           </p>
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-sm text-[var(--text-muted)]">
-                Claude (Anthropic)
+                OpenAI (chat, conversation starters, meeting summaries)
               </label>
               <input
                 type="password"
-                placeholder="sk-ant-…"
-                value={apiKeys.anthropic ?? ""}
+                placeholder="sk-…"
+                value={apiKeys.openai ?? ""}
                 onChange={(e) =>
-                  setApiKeys((k) => ({ ...k, anthropic: e.target.value }))
+                  setApiKeys((k) => ({ ...k, openai: e.target.value }))
                 }
                 className="w-full rounded-lg border-2 border-[var(--mint-soft)] bg-[var(--cream)] px-3 py-2 text-[var(--text)] placeholder-[var(--text-muted)]"
               />
@@ -175,20 +173,6 @@ export default function SettingsPage() {
                 value={apiKeys.elevenlabs ?? ""}
                 onChange={(e) =>
                   setApiKeys((k) => ({ ...k, elevenlabs: e.target.value }))
-                }
-                className="w-full rounded-lg border-2 border-[var(--mint-soft)] bg-[var(--cream)] px-3 py-2 text-[var(--text)] placeholder-[var(--text-muted)]"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-[var(--text-muted)]">
-                OpenAI (Whisper, voice transcription)
-              </label>
-              <input
-                type="password"
-                placeholder="sk-…"
-                value={apiKeys.openai ?? ""}
-                onChange={(e) =>
-                  setApiKeys((k) => ({ ...k, openai: e.target.value }))
                 }
                 className="w-full rounded-lg border-2 border-[var(--mint-soft)] bg-[var(--cream)] px-3 py-2 text-[var(--text)] placeholder-[var(--text-muted)]"
               />

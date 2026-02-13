@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
 import type { Contact, MeetingDossier } from "@/lib/types";
 import { MeetingRecorder } from "@/app/components/MeetingRecorder";
 
@@ -21,6 +22,18 @@ export default function ContactDetailPage() {
   const [questions, setQuestions] = useState<string[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [dossiers, setDossiers] = useState<MeetingDossier[]>([]);
+  const [researchReportOpen, setResearchReportOpen] = useState(false);
+  const researchSummaryRef = useRef<HTMLElement>(null);
+
+  const fetchContact = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/contacts/${id}`, { credentials: "include" });
+      if (res.ok) setContact(await res.json());
+    } catch {
+      // ignore
+    }
+  }, [id]);
 
   useEffect(() => {
     if (!id) {
@@ -41,6 +54,13 @@ export default function ContactDetailPage() {
       cancelled = true;
     };
   }, [id]);
+
+  // Refetch contact when tab gains focus (e.g. research completed in background)
+  useEffect(() => {
+    const onFocus = () => fetchContact();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchContact]);
 
   async function loadDossiers() {
     if (!id) return;
@@ -95,6 +115,7 @@ export default function ContactDetailPage() {
         body: JSON.stringify({
           contactName: contact?.name,
           company: contact?.company,
+          contactId: contact?.id,
           trendsSummary,
         }),
       });
@@ -109,6 +130,43 @@ export default function ContactDetailPage() {
     }
   }
 
+  async function runResearch() {
+    if (!contact?.id || contact.researchTaskId) return;
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}/research`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Research failed");
+      setContact(data);
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  // Poll research status when this contact has an in-flight task
+  useEffect(() => {
+    if (!id || !contact?.researchTaskId) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/contacts/${id}/research/status`, {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === "completed" && data.contact) {
+          setContact(data.contact);
+          setTimeout(() => researchSummaryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+        }
+        if (data.status === "failed") setContact((c) => c ? { ...c, researchTaskId: undefined, researchTaskStatus: undefined } : c);
+      } catch {
+        // ignore
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [id, contact?.researchTaskId]);
+
   if (loading) return <main className="p-6"><p className="text-[var(--text-muted)]">Loading…</p></main>;
   if (!contact) return <main className="p-6"><p className="text-[var(--text-muted)]">Contact not found.</p><Link href="/contacts" className="text-[var(--text-muted)]">Back to contacts</Link></main>;
 
@@ -116,14 +174,106 @@ export default function ContactDetailPage() {
 
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <Link href="/contacts" className="mb-4 inline-block text-sm text-[var(--text-muted)] hover:underline">← Contacts</Link>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <Link href="/contacts" className="text-sm text-[var(--text-muted)] hover:underline">← Contacts</Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/contacts?edit=${contact.id}`}
+            className="rounded-lg border border-[var(--mint-soft)] px-3 py-1.5 text-sm text-[var(--text-muted)] hover:bg-[var(--mint-soft)]"
+          >
+            Edit
+          </Link>
+          <button
+            type="button"
+            onClick={runResearch}
+            disabled={!!contact.researchTaskId}
+            className="rounded-lg border border-[var(--sky)] bg-[var(--sky-soft)] px-3 py-1.5 text-sm font-medium text-[var(--text)] hover:bg-[var(--sky)] disabled:opacity-60"
+          >
+            {contact.researchTaskId ? "Researching…" : "Deep research"}
+          </button>
+        </div>
+      </div>
       <h1 className="text-2xl font-semibold text-[var(--text)]">{contact.name}</h1>
       {(contact.company || contact.role) && (
         <p className="text-[var(--text-muted)]">{[contact.company, contact.role].filter(Boolean).join(" · ")}</p>
       )}
-      {contact.phone && <p className="mt-2 text-[var(--text-muted)]">Phone: {contact.phone}</p>}
-      {contact.email && <p className="text-[var(--text-muted)]">Email: {contact.email}</p>}
-      {contact.notes && <p className="mt-3 text-[var(--text-muted)]">{contact.notes}</p>}
+      {contact.pronouns && (
+        <p className="text-sm text-[var(--text-muted)]">Pronouns: {contact.pronouns}</p>
+      )}
+
+      {/* AI-generated display card (summary); regenerated when contact or research changes */}
+      {(contact.displaySummary || contact.researchTaskId) ? (
+        <section
+          ref={researchSummaryRef}
+          id="research-summary"
+          className="mt-6 rounded-xl border border-[var(--sky)] bg-[var(--sky-soft)]/50 p-4"
+        >
+          <h2 className="mb-2 text-base font-semibold text-[var(--text)]">Summary</h2>
+          {contact.researchTaskId ? (
+            <p className="text-sm text-[var(--text-muted)]">Research in progress… Summary will update when ready.</p>
+          ) : contact.displaySummary ? (
+            <div className="research-report text-sm leading-relaxed text-[var(--text)] [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5 [&>h2]:mt-3 [&>h2]:mb-1 [&>h2]:font-semibold [&>h3]:mt-2 [&>h3]:mb-1 [&>h3]:font-medium [&>a]:text-[var(--sky)] [&>a]:underline hover:[&>a]:no-underline">
+              <ReactMarkdown
+                components={{
+                  a: ({ href, children }) => (
+                    <a href={href} target="_blank" rel="noopener noreferrer">
+                      {children}
+                    </a>
+                  ),
+                }}
+              >
+                {contact.displaySummary}
+              </ReactMarkdown>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* Full deep research report (Exa output) – collapsible */}
+      {contact.researchSummary && (
+        <section className="mt-6 rounded-xl border border-[var(--mint-soft)] bg-[var(--cream)] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setResearchReportOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-2 p-4 text-left hover:bg-[var(--mint-soft)]/30 transition-colors"
+            aria-expanded={researchReportOpen}
+          >
+            <h2 className="text-base font-semibold text-[var(--text)]">Deep research report</h2>
+            <span className="shrink-0 text-[var(--text-muted)] transition-transform" style={{ transform: researchReportOpen ? "rotate(180deg)" : "rotate(0deg)" }} aria-hidden>▼</span>
+          </button>
+          {researchReportOpen && (
+            <div className="border-t border-[var(--mint-soft)] p-4">
+              <p className="mb-3 text-xs text-[var(--text-muted)]">Full report from deep research. The summary above is an AI-generated digest of this and your contact info.</p>
+              <div className="research-report text-sm leading-relaxed text-[var(--text)] [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5 [&>h2]:mt-3 [&>h2]:mb-1 [&>h2]:font-semibold [&>h3]:mt-2 [&>h3]:mb-1 [&>h3]:font-medium [&>a]:text-[var(--sky)] [&>a]:underline hover:[&>a]:no-underline">
+                <ReactMarkdown
+                  components={{
+                    a: ({ href, children }) => (
+                      <a href={href} target="_blank" rel="noopener noreferrer">
+                        {children}
+                      </a>
+                    ),
+                  }}
+                >
+                  {contact.researchSummary}
+                </ReactMarkdown>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      <div className="mt-6 space-y-1 text-sm text-[var(--text-muted)]">
+        {contact.phone && <p>Phone: {contact.phone}</p>}
+        {contact.email && <p>Email: {contact.email}</p>}
+        {contact.linkedInUrl && (
+          <p>
+            <a href={contact.linkedInUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--text)] underline hover:no-underline">
+              LinkedIn profile →
+            </a>
+          </p>
+        )}
+      </div>
+      {contact.notes && <p className="mt-3 text-sm text-[var(--text-muted)]">{contact.notes}</p>}
 
       {hasCompanyInfo && (
         <section className="mt-6 rounded border border-[var(--mint-soft)] bg-[var(--cream)] p-4">
@@ -196,8 +346,8 @@ export default function ContactDetailPage() {
                 {d.summary && <p className="text-sm text-[var(--text-muted)]">{d.summary}</p>}
                 {d.transcript && (
                   <details className="mt-2">
-                    <summary className="cursor-pointer text-xs text-[var(--text)]0">Transcript</summary>
-                    <p className="mt-1 max-h-32 overflow-y-auto text-xs text-[var(--text)]0 whitespace-pre-wrap">
+                    <summary className="cursor-pointer text-xs text-[var(--text)]">Transcript</summary>
+                    <p className="mt-1 max-h-32 overflow-y-auto text-xs text-[var(--text)] whitespace-pre-wrap">
                       {d.transcript}
                     </p>
                   </details>
@@ -209,7 +359,7 @@ export default function ContactDetailPage() {
                     ))}
                   </ul>
                 )}
-                <p className="mt-1 text-xs text-[var(--text)]0">
+                <p className="mt-1 text-xs text-[var(--text)]">
                   {d.createdAt ? new Date(d.createdAt).toLocaleString() : ""}
                 </p>
               </li>

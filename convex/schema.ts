@@ -9,7 +9,6 @@ export default defineSchema({
     timezone: v.string(),
     apiKeys: v.optional(
       v.object({
-        anthropic: v.optional(v.string()),
         openai: v.optional(v.string()),
         finnhub: v.optional(v.string()),
         elevenlabs: v.optional(v.string()),
@@ -37,6 +36,13 @@ export default defineSchema({
     email: v.optional(v.string()),
     stockTicker: v.optional(v.string()),
     notes: v.optional(v.string()),
+    pronouns: v.optional(v.string()),
+    photoUrl: v.optional(v.string()),
+    linkedInUrl: v.optional(v.string()),
+    researchSummary: v.optional(v.string()),
+    displaySummary: v.optional(v.string()),
+    researchTaskId: v.optional(v.string()),
+    researchTaskStatus: v.optional(v.string()),
     eventIds: v.array(v.string()),
     createdAt: v.string(),
     updatedAt: v.string(),

@@ -1,60 +1,49 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getConvexClient, api } from "@/lib/convex-server";
 import { getUid } from "@/lib/workos-auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { getOpenAIKey } from "@/lib/llm-keys";
+import OpenAI from "openai";
 
-async function getClaudeKey(uid: string | null): Promise<string | null> {
-  const fromEnv = process.env.ANTHROPIC_API_KEY;
-  if (fromEnv) return fromEnv;
-  if (!uid) return null;
-  try {
-    const client = await getConvexClient(uid);
-    const settings = await client.query(api.userSettings.get);
-    return (settings?.apiKeys as { anthropic?: string } | undefined)?.anthropic ?? null;
-  } catch {
-    return null;
-  }
-}
-
-export async function POST(request: NextRequest) {
-  const uid = await getUid(request);
-  if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const apiKey = await getClaudeKey(uid);
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Claude API key not configured" },
-      { status: 503 }
-    );
-  }
-  try {
-    const body = await request.json();
-    const transcript = String(body.transcript ?? "").trim();
-    if (!transcript) {
-      return NextResponse.json({ error: "transcript required" }, { status: 400 });
-    }
-    const anthropic = new Anthropic({ apiKey });
-    const message = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: `Below is a meeting transcript. Provide:
+const SUMMARIZE_PROMPT = (transcript: string) =>
+  `Below is a meeting transcript. Provide:
 1. A short summary (2-4 sentences).
 2. A list of action items (who does what, or follow-ups).
 
 Format your response as JSON only, with exactly two keys: "summary" (string) and "actionItems" (array of strings). No other text.
 
 Transcript:
-${transcript.slice(0, 50000)}`,
-        },
-      ],
+${transcript.slice(0, 50000)}`;
+
+export async function POST(request: NextRequest) {
+  const uid = await getUid(request);
+  if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const openaiKey = await getOpenAIKey(uid);
+  if (!openaiKey) {
+    return NextResponse.json(
+      { error: "Add an OpenAI API key in Settings or set OPENAI_API_KEY for summarization." },
+      { status: 503 }
+    );
+  }
+
+  try {
+    const body = await request.json();
+    const transcript = String(body.transcript ?? "").trim();
+    if (!transcript) {
+      return NextResponse.json({ error: "transcript required" }, { status: 400 });
+    }
+
+    const prompt = SUMMARIZE_PROMPT(transcript);
+    let text = "";
+
+    const openai = new OpenAI({ apiKey: openaiKey });
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
     });
-    const text =
-      message.content[0].type === "text"
-        ? (message.content[0] as { type: "text"; text: string }).text
-        : "";
+    text = completion.choices[0]?.message?.content ?? "";
+
     let summary = "";
     let actionItems: string[] = [];
     try {

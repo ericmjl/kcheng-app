@@ -5,7 +5,6 @@ export type TripSettings = {
 };
 
 export type ApiKeysConfig = {
-  anthropic?: string;
   openai?: string;
   finnhub?: string;
   elevenlabs?: string;
@@ -32,6 +31,13 @@ export type Contact = {
   email?: string;
   stockTicker?: string;
   notes?: string;
+  pronouns?: string;
+  photoUrl?: string;
+  linkedInUrl?: string;
+  researchSummary?: string;
+  displaySummary?: string;
+  researchTaskId?: string;
+  researchTaskStatus?: string;
   eventIds: string[];
   createdAt: string;
   updatedAt: string;

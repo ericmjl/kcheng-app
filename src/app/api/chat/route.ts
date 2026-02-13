@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { streamText, tool, stepCountIs, convertToModelMessages, type UIMessage } from "ai";
-import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { getConvexClient, api } from "@/lib/convex-server";
 import {
@@ -8,19 +8,7 @@ import {
   parseDocumentFromDataUrl,
 } from "@/lib/parse-document";
 import { getUid } from "@/lib/workos-auth";
-
-async function getClaudeKey(uid: string | null): Promise<string | null> {
-  const fromEnv = process.env.ANTHROPIC_API_KEY;
-  if (fromEnv) return fromEnv;
-  if (!uid) return null;
-  try {
-    const client = await getConvexClient(uid);
-    const settings = await client.query(api.userSettings.get);
-    return (settings?.apiKeys as { anthropic?: string } | undefined)?.anthropic ?? null;
-  } catch {
-    return null;
-  }
-}
+import { getOpenAIKey } from "@/lib/llm-keys";
 
 const SYSTEM_PROMPT_BASE = `You are a helpful assistant for a China trip planner. You create contacts, calendar events, and todos by calling tools. You MUST call the tools—never just describe what you would do in text.
 
@@ -77,10 +65,10 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const apiKey = await getClaudeKey(uid);
-  if (!apiKey) {
+  const openaiKey = await getOpenAIKey(uid);
+  if (!openaiKey) {
     return new Response(
-      JSON.stringify({ error: "Claude API key not configured. Add in Settings or set ANTHROPIC_API_KEY." }),
+      JSON.stringify({ error: "Add an OpenAI API key in Settings or set OPENAI_API_KEY." }),
       { status: 503, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -147,9 +135,10 @@ export async function POST(request: NextRequest) {
 
   const modelMessages = await convertToModelMessages(rawMessages);
 
-  const anthropicProvider = createAnthropic({ apiKey });
+  const model = createOpenAI({ apiKey: openaiKey })("gpt-4o");
+
   const result = streamText({
-    model: anthropicProvider("claude-sonnet-4-20250514"),
+    model,
     system: systemPrompt,
     messages: modelMessages,
     stopWhen: stepCountIs(5),

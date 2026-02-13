@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getConvexClient, api } from "@/lib/convex-server";
 import { getUid } from "@/lib/workos-auth";
+import { generateDisplaySummary } from "@/lib/generate-display-summary";
 
 export async function GET(
   request: NextRequest,
@@ -36,13 +37,35 @@ export async function PATCH(
     if (body.email !== undefined) updates.email = body.email ? String(body.email).trim() : undefined;
     if (body.stockTicker !== undefined) updates.stockTicker = body.stockTicker ? String(body.stockTicker).trim() : undefined;
     if (body.notes !== undefined) updates.notes = body.notes ? String(body.notes).trim() : undefined;
+    if (body.pronouns !== undefined) updates.pronouns = body.pronouns ? String(body.pronouns).trim() : "";
+    if (body.photoUrl !== undefined) updates.photoUrl = body.photoUrl ? String(body.photoUrl).trim() : undefined;
+    if (body.linkedInUrl !== undefined) updates.linkedInUrl = body.linkedInUrl ? String(body.linkedInUrl).trim() : undefined;
+    if (body.researchSummary !== undefined) updates.researchSummary = body.researchSummary ? String(body.researchSummary).trim() : undefined;
+    if (body.researchTaskId !== undefined) updates.researchTaskId = body.researchTaskId ? String(body.researchTaskId).trim() : undefined;
+    if (body.researchTaskStatus !== undefined) updates.researchTaskStatus = body.researchTaskStatus ? String(body.researchTaskStatus).trim() : undefined;
     if (Array.isArray(body.eventIds)) updates.eventIds = body.eventIds;
 
     const client = await getConvexClient(uid);
-    const doc = await client.mutation(api.contacts.update, {
+    let doc = await client.mutation(api.contacts.update, {
       id: (await params).id as any,
       ...updates,
     });
+    if (doc?.name) {
+      const displaySummary = await generateDisplaySummary(uid, {
+        name: doc.name,
+        company: doc.company,
+        role: doc.role,
+        notes: doc.notes,
+        linkedInUrl: doc.linkedInUrl,
+        researchSummary: doc.researchSummary,
+      });
+      if (displaySummary) {
+        doc = await client.mutation(api.contacts.update, {
+          id: (await params).id as any,
+          displaySummary,
+        });
+      }
+    }
     return NextResponse.json(doc);
   } catch (e) {
     console.error(e);

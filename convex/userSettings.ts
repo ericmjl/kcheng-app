@@ -29,7 +29,6 @@ export const set = mutation({
     timezone: v.optional(v.string()),
     apiKeys: v.optional(
       v.object({
-        anthropic: v.optional(v.string()),
         openai: v.optional(v.string()),
         finnhub: v.optional(v.string()),
         elevenlabs: v.optional(v.string()),

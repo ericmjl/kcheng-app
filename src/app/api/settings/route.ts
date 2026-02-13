@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       tripStart?: string;
       tripEnd?: string;
       timezone?: string;
-      apiKeys?: { anthropic?: string; openai?: string; finnhub?: string; elevenlabs?: string };
+      apiKeys?: { openai?: string; finnhub?: string; elevenlabs?: string };
       savedPlaces?: Array<{ id: string; label: string; address: string; createdAt: string; updatedAt: string }>;
     } = {};
     if (typeof body.tripStart === "string") updates.tripStart = body.tripStart;
@@ -48,7 +48,6 @@ export async function POST(request: NextRequest) {
     if (typeof body.timezone === "string") updates.timezone = body.timezone;
     if (body.apiKeys && typeof body.apiKeys === "object") {
       updates.apiKeys = {
-        anthropic: body.apiKeys.anthropic ?? undefined,
         openai: body.apiKeys.openai ?? undefined,
         finnhub: body.apiKeys.finnhub ?? undefined,
         elevenlabs: body.apiKeys.elevenlabs ?? undefined,

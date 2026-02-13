@@ -16,7 +16,9 @@ export const get = query({
       .query("userSettings")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .first();
-    return doc ? { ...defaults, ...doc } : { ...defaults, userId };
+    return doc
+      ? { ...defaults, ...doc }
+      : { ...defaults, userId, apiKeys: undefined, savedPlaces: undefined };
   },
 });
 

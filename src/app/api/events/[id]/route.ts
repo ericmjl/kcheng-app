@@ -36,7 +36,7 @@ export async function PATCH(
     if (body.location !== undefined) args.location = body.location ? String(body.location) : undefined;
     if (body.contactIds !== undefined) {
       args.contactIds = Array.isArray(body.contactIds)
-        ? body.contactIds.filter((id): id is string => typeof id === "string").slice(0, 50)
+        ? body.contactIds.filter((id: unknown): id is string => typeof id === "string").slice(0, 50)
         : [];
     } else if (body.contactId !== undefined) {
       args.contactIds = body.contactId ? [String(body.contactId)] : [];

@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString();
     const client = await getConvexClient(uid);
     const contactIds = Array.isArray(body.contactIds)
-      ? body.contactIds.filter((id): id is string => typeof id === "string").slice(0, 50)
+      ? body.contactIds.filter((id: unknown): id is string => typeof id === "string").slice(0, 50)
       : body.contactId
         ? [String(body.contactId)]
         : undefined;

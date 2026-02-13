@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
 
 function urlBase64ToUint8Array(base64: string): Uint8Array {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
@@ -46,20 +45,12 @@ export function PushSection() {
         applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
       });
       const serialized = JSON.parse(JSON.stringify(sub));
-      if (isFirebaseConfigured()) {
-        const user = await ensureAnonymousAuth();
-        if (user) {
-          const token = await user.getIdToken();
-          await fetch("/api/push/subscribe", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ subscription: serialized }),
-          });
-        }
-      }
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ subscription: serialized }),
+      });
       setSubscribed(true);
     } catch (e) {
       console.error(e);

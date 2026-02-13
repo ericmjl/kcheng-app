@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
 import type { SavedPlace } from "@/lib/types";
 
 const DIDI_WEB_URL = "https://m.didiglobal.com";
@@ -14,20 +13,8 @@ export default function DidiPage() {
   const [newAddress, setNewAddress] = useState("");
 
   const loadSettings = useCallback(async () => {
-    if (!isFirebaseConfigured()) {
-      setLoading(false);
-      return;
-    }
     try {
-      const user = await ensureAnonymousAuth();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-      const token = await user.getIdToken();
-      const res = await fetch("/api/settings", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch("/api/settings", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setPlaces(Array.isArray(data.savedPlaces) ? data.savedPlaces : []);
@@ -46,10 +33,7 @@ export default function DidiPage() {
     e.preventDefault();
     const label = newLabel.trim();
     const address = newAddress.trim();
-    if (!label || !address || !isFirebaseConfigured()) return;
-    const user = await ensureAnonymousAuth();
-    if (!user) return;
-    const token = await user.getIdToken();
+    if (!label || !address) return;
     const next: SavedPlace = {
       id: crypto.randomUUID(),
       label,
@@ -60,10 +44,8 @@ export default function DidiPage() {
     const updated = [...places, next];
     const res = await fetch("/api/settings", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         savedPlaces: updated,
       }),
@@ -76,17 +58,11 @@ export default function DidiPage() {
   }
 
   async function deletePlace(id: string) {
-    if (!isFirebaseConfigured()) return;
-    const user = await ensureAnonymousAuth();
-    if (!user) return;
-    const token = await user.getIdToken();
     const updated = places.filter((p) => p.id !== id);
     const res = await fetch("/api/settings", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         savedPlaces: updated,
       }),

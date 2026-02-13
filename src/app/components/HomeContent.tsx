@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { WhatsNext } from "./WhatsNext";
 import type { Event } from "@/lib/types";
 
@@ -10,16 +9,10 @@ export function HomeContent() {
   const [events, setEvents] = useState<Event[]>([]);
 
   useEffect(() => {
-    if (!isFirebaseConfigured()) return;
     let cancelled = false;
     (async () => {
       try {
-        const user = await ensureAnonymousAuth();
-        if (!user || cancelled) return;
-        const token = await user.getIdToken();
-        const res = await fetch("/api/events", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch("/api/events", { credentials: "include" });
         if (res.ok && !cancelled) {
           const data = await res.json();
           setEvents(Array.isArray(data) ? data : []);

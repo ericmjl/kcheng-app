@@ -9,7 +9,6 @@ import {
   startOfDay,
   isWithinInterval,
 } from "date-fns";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { getLocalSettings } from "@/lib/settings";
 import { cachedGet } from "@/lib/cachedFetch";
 import type { Event } from "@/lib/types";
@@ -53,24 +52,16 @@ export default function CalendarPage() {
     const local = getLocalSettings();
     setTripStart(local.tripStart ?? "");
     setTripEnd(local.tripEnd ?? "");
-    if (isFirebaseConfigured()) {
-      try {
-        const user = await ensureAnonymousAuth();
-        if (user) {
-          const token = await user.getIdToken();
-          const data = await cachedGet<Event[]>("events", async () => {
-            const res = await fetch("/api/events", {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!res.ok) throw new Error("Failed to load events");
-            const json = await res.json();
-            return Array.isArray(json) ? json : [];
-          });
-          setEvents(data);
-        }
-      } catch (e) {
-        console.warn("Events load failed", e);
-      }
+    try {
+      const data = await cachedGet<Event[]>("events", async () => {
+        const res = await fetch("/api/events", { credentials: "include" });
+        if (!res.ok) throw new Error("Failed to load events");
+        const json = await res.json();
+        return Array.isArray(json) ? json : [];
+      });
+      setEvents(data);
+    } catch (e) {
+      console.warn("Events load failed", e);
     }
     setLoading(false);
   }, []);
@@ -90,16 +81,10 @@ export default function CalendarPage() {
     const dayStr = format(selectedDay, "yyyy-MM-dd");
     const start = formStart ? `${dayStr}T${formStart}:00` : `${dayStr}T09:00:00`;
     if (editingEvent) {
-      if (!isFirebaseConfigured()) return;
-      const user = await ensureAnonymousAuth();
-      if (!user) return;
-      const token = await user.getIdToken();
       const res = await fetch(`/api/events/${editingEvent.id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           title: formTitle.trim(),
           start,
@@ -116,16 +101,10 @@ export default function CalendarPage() {
         resetForm();
       }
     } else {
-      if (!isFirebaseConfigured()) return;
-      const user = await ensureAnonymousAuth();
-      if (!user) return;
-      const token = await user.getIdToken();
       const res = await fetch("/api/events", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           title: formTitle.trim(),
           start,
@@ -158,13 +137,9 @@ export default function CalendarPage() {
   }
 
   async function deleteEvent(id: string) {
-    if (!isFirebaseConfigured()) return;
-    const user = await ensureAnonymousAuth();
-    if (!user) return;
-    const token = await user.getIdToken();
     const res = await fetch(`/api/events/${id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (res.ok) setEvents((prev) => prev.filter((e) => e.id !== id));
   }

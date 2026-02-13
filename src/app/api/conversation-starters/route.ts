@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyIdToken } from "@/lib/firebase-admin";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { getUid } from "@/lib/workos-auth";
 import Anthropic from "@anthropic-ai/sdk";
-
-async function getUid(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!token) return null;
-  const decoded = await verifyIdToken(token);
-  return decoded?.uid ?? null;
-}
 
 async function getClaudeKey(uid: string | null): Promise<string | null> {
   const fromEnv = process.env.ANTHROPIC_API_KEY;

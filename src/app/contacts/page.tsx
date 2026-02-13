@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { vCardToContact } from "@/lib/vcard";
 import { cachedGet } from "@/lib/cachedFetch";
 import type { Contact } from "@/lib/types";
@@ -25,21 +24,9 @@ export default function ContactsPage() {
   });
 
   const loadContacts = useCallback(async () => {
-    if (!isFirebaseConfigured()) {
-      setLoading(false);
-      return;
-    }
     try {
-      const user = await ensureAnonymousAuth();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-      const token = await user.getIdToken();
       const data = await cachedGet<Contact[]>("contacts", async () => {
-        const res = await fetch("/api/contacts", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch("/api/contacts", { credentials: "include" });
         if (!res.ok) throw new Error("Failed to load contacts");
         const json = await res.json();
         return Array.isArray(json) ? json : [];
@@ -86,10 +73,6 @@ export default function ContactsPage() {
 
   async function saveContact(e: React.FormEvent) {
     e.preventDefault();
-    if (!isFirebaseConfigured()) return;
-    const user = await ensureAnonymousAuth();
-    if (!user) return;
-    const token = await user.getIdToken();
     const payload = {
       name: form.name.trim(),
       company: form.company.trim() || undefined,
@@ -103,10 +86,8 @@ export default function ContactsPage() {
     if (editing?.id) {
       const res = await fetch(`/api/contacts/${editing.id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
       if (res.ok) {
@@ -118,10 +99,8 @@ export default function ContactsPage() {
     } else {
       const res = await fetch("/api/contacts", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
       if (res.ok) {
@@ -133,13 +112,9 @@ export default function ContactsPage() {
   }
 
   async function deleteContact(id: string) {
-    if (!isFirebaseConfigured()) return;
-    const user = await ensureAnonymousAuth();
-    if (!user) return;
-    const token = await user.getIdToken();
     const res = await fetch(`/api/contacts/${id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (res.ok) {
       setContacts((prev) => prev.filter((c) => c.id !== id));

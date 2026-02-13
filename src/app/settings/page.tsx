@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { getLocalSettings, setLocalSettings } from "@/lib/settings";
 import type { UserSettingsDoc } from "@/lib/types";
 import { PushSection } from "./PushSection";
@@ -17,7 +16,7 @@ export default function SettingsPage() {
   }>({});
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [firebaseReady, setFirebaseReady] = useState(false);
+  const [serverReady, setServerReady] = useState(false);
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -26,27 +25,18 @@ export default function SettingsPage() {
     setTripEnd(local.tripEnd ?? "");
     setTimezone(local.timezone ?? "Asia/Shanghai");
     setApiKeys(local.apiKeys ?? {});
-
-    if (isFirebaseConfigured()) {
-      try {
-        const user = await ensureAnonymousAuth();
-        if (user) {
-          const token = await user.getIdToken();
-          const res = await fetch("/api/settings", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setTripStart(data.tripStart ?? "");
-            setTripEnd(data.tripEnd ?? "");
-            setTimezone(data.timezone ?? "Asia/Shanghai");
-            setApiKeys(data.apiKeys ?? {});
-            setFirebaseReady(true);
-          }
-        }
-      } catch (e) {
-        console.warn("Firebase load failed, using local", e);
+    try {
+      const res = await fetch("/api/settings", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setTripStart(data.tripStart ?? "");
+        setTripEnd(data.tripEnd ?? "");
+        setTimezone(data.timezone ?? "Asia/Shanghai");
+        setApiKeys(data.apiKeys ?? {});
+        setServerReady(true);
       }
+    } catch (e) {
+      console.warn("Settings load failed, using local", e);
     }
     setLoading(false);
   }, []);
@@ -70,27 +60,18 @@ export default function SettingsPage() {
     };
 
     setLocalSettings(payload);
-
-    if (isFirebaseConfigured()) {
-      try {
-        const user = await ensureAnonymousAuth();
-        if (user) {
-          const token = await user.getIdToken();
-          const res = await fetch("/api/settings", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(payload),
-          });
-          if (!res.ok) throw new Error("Save failed");
-        }
-      } catch (err) {
-        console.error(err);
-        setSaved(false);
-        return;
-      }
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Save failed");
+    } catch (err) {
+      console.error(err);
+      setSaved(false);
+      return;
     }
     setSaved(true);
   }
@@ -106,11 +87,9 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="mb-6 text-2xl font-semibold text-[var(--text)]">Settings</h1>
-      {!isFirebaseConfigured() && (
+      {!serverReady && (
         <p className="mb-4 rounded-lg border border-[var(--peach)] bg-[var(--peach)]/20 p-3 text-sm text-[var(--text)]">
-          Add Firebase env vars (NEXT_PUBLIC_FIREBASE_*) and server credentials
-          (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY) to
-          sync settings across devices. Until then, settings are saved locally.
+          Sign in to sync settings across devices. Until then, settings are saved locally.
         </p>
       )}
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -161,7 +140,7 @@ export default function SettingsPage() {
           <p className="mb-3 text-sm text-[var(--text-muted)]">
             Optional: set in Vercel env vars instead (ANTHROPIC_API_KEY,
             OPENAI_API_KEY, FINNHUB_API_KEY). If you paste here, they are stored
-            in your account (Firebase) or locally.
+            in your account or locally.
           </p>
           <div className="space-y-3">
             <div>

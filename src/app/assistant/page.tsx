@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import type { UIMessage } from "ai";
 
 function getMessageDisplayText(msg: UIMessage): string {
@@ -25,6 +25,7 @@ function getMessageDisplayText(msg: UIMessage): string {
 const ACCEPT_FILES = ".xlsx,.xls,.docx,.doc";
 
 export default function AssistantPage() {
+  const { user, loading: authLoading } = useAuth();
   const [input, setInput] = useState("");
   const [fileList, setFileList] = useState<FileList | null>(null);
 
@@ -32,12 +33,7 @@ export default function AssistantPage() {
     () =>
       new DefaultChatTransport({
         api: "/api/chat",
-        headers: async (): Promise<Record<string, string>> => {
-          const user = await ensureAnonymousAuth();
-          if (!user) return {};
-          const token = await user.getIdToken();
-          return { Authorization: `Bearer ${token}` };
-        },
+        credentials: "include",
       }),
     []
   );
@@ -68,11 +64,11 @@ export default function AssistantPage() {
     }
   };
 
-  if (!isFirebaseConfigured()) {
+  if (!authLoading && !user) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-8">
         <p className="text-[var(--text-muted)]">
-          The assistant isn&rsquo;t available right now. Please try again later.
+          <a href="/auth/signin" className="underline hover:text-[var(--text)]">Sign in</a> to use the assistant.
         </p>
       </main>
     );

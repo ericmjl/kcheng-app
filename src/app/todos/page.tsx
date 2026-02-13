@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, parseISO, startOfDay, isSameDay } from "date-fns";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { cachedGet } from "@/lib/cachedFetch";
 import type { Todo } from "@/lib/types";
 
@@ -16,21 +15,9 @@ export default function TodosPage() {
   const [filter, setFilter] = useState<Filter>("all");
 
   const loadTodos = useCallback(async () => {
-    if (!isFirebaseConfigured()) {
-      setLoading(false);
-      return;
-    }
     try {
-      const user = await ensureAnonymousAuth();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-      const token = await user.getIdToken();
       const data = await cachedGet<Todo[]>("todos", async () => {
-        const res = await fetch("/api/todos", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch("/api/todos", { credentials: "include" });
         if (!res.ok) throw new Error("Failed to load todos");
         const json = await res.json();
         return Array.isArray(json) ? json : [];
@@ -54,16 +41,11 @@ export default function TodosPage() {
   async function addTodo(e: React.FormEvent) {
     e.preventDefault();
     const text = newText.trim();
-    if (!text || !isFirebaseConfigured()) return;
-    const user = await ensureAnonymousAuth();
-    if (!user) return;
-    const token = await user.getIdToken();
+    if (!text) return;
     const res = await fetch("/api/todos", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         text,
         done: false,
@@ -79,16 +61,10 @@ export default function TodosPage() {
   }
 
   async function toggleDone(t: Todo) {
-    if (!isFirebaseConfigured()) return;
-    const user = await ensureAnonymousAuth();
-    if (!user) return;
-    const token = await user.getIdToken();
     const res = await fetch(`/api/todos/${t.id}`, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ done: !t.done }),
     });
     if (res.ok) {
@@ -98,13 +74,9 @@ export default function TodosPage() {
   }
 
   async function deleteTodo(id: string) {
-    if (!isFirebaseConfigured()) return;
-    const user = await ensureAnonymousAuth();
-    if (!user) return;
-    const token = await user.getIdToken();
     const res = await fetch(`/api/todos/${id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (res.ok) setTodos((prev) => prev.filter((x) => x.id !== id));
   }

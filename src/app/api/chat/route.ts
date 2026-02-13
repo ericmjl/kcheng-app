@@ -2,19 +2,12 @@ import { NextRequest } from "next/server";
 import { streamText, tool, stepCountIs, convertToModelMessages, type UIMessage } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { verifyIdToken, getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDb } from "@/lib/firebase-admin";
 import {
   isParseableDoc,
   parseDocumentFromDataUrl,
 } from "@/lib/parse-document";
-
-async function getUid(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!token) return null;
-  const decoded = await verifyIdToken(token);
-  return decoded?.uid ?? null;
-}
+import { getUid } from "@/lib/workos-auth";
 
 async function getClaudeKey(uid: string | null): Promise<string | null> {
   const fromEnv = process.env.ANTHROPIC_API_KEY;

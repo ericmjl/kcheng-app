@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, parseISO } from "date-fns";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
 import type { PlannedRoute } from "@/lib/types";
 
 const TRIP_COM_TRAINS_URL = "https://www.trip.com/trains/";
@@ -16,20 +15,8 @@ export default function TrainsPage() {
   const [notes, setNotes] = useState("");
 
   const loadRoutes = useCallback(async () => {
-    if (!isFirebaseConfigured()) {
-      setLoading(false);
-      return;
-    }
     try {
-      const user = await ensureAnonymousAuth();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-      const token = await user.getIdToken();
-      const res = await fetch("/api/planned-routes", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch("/api/planned-routes", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setRoutes(Array.isArray(data) ? data : []);
@@ -49,16 +36,11 @@ export default function TrainsPage() {
     const fromTrim = from.trim();
     const toTrim = to.trim();
     const dateTrim = date.trim();
-    if (!fromTrim || !toTrim || !dateTrim || !isFirebaseConfigured()) return;
-    const user = await ensureAnonymousAuth();
-    if (!user) return;
-    const token = await user.getIdToken();
+    if (!fromTrim || !toTrim || !dateTrim) return;
     const res = await fetch("/api/planned-routes", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         from: fromTrim,
         to: toTrim,
@@ -77,13 +59,9 @@ export default function TrainsPage() {
   }
 
   async function deleteRoute(id: string) {
-    if (!isFirebaseConfigured()) return;
-    const user = await ensureAnonymousAuth();
-    if (!user) return;
-    const token = await user.getIdToken();
     const res = await fetch(`/api/planned-routes/${id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (res.ok) setRoutes((prev) => prev.filter((r) => r.id !== id));
   }

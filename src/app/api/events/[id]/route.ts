@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyIdToken } from "@/lib/firebase-admin";
 import { getAdminDb } from "@/lib/firebase-admin";
-
-async function getUid(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!token) return null;
-  const decoded = await verifyIdToken(token);
-  return decoded?.uid ?? null;
-}
+import { getUid } from "@/lib/workos-auth";
 
 function eventRef(uid: string, eventId: string) {
   const db = getAdminDb();

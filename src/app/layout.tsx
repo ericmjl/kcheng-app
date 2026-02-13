@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import "./globals.css";
 import { Nav } from "./components/Nav";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
+import { getInitialAuth } from "@/lib/workos-auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,22 +21,25 @@ export const metadata: Metadata = {
   description: "Plan your China trip: calendar, contacts, meetings, trains, and more.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const initialAuth = await getInitialAuth();
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} relative min-h-screen text-[var(--text)] antialiased`}
         style={{ background: "var(--wall)" }}
       >
-        <div className="relative z-10">
-          <ServiceWorkerRegister />
-          <Nav />
-          {children}
-        </div>
+        <AuthKitProvider initialAuth={initialAuth}>
+          <div className="relative z-10">
+            <ServiceWorkerRegister />
+            <Nav />
+            {children}
+          </div>
+        </AuthKitProvider>
       </body>
     </html>
   );

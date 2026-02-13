@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
 import type { Contact, MeetingDossier } from "@/lib/types";
 import { MeetingRecorder } from "@/app/components/MeetingRecorder";
 
@@ -24,19 +23,14 @@ export default function ContactDetailPage() {
   const [dossiers, setDossiers] = useState<MeetingDossier[]>([]);
 
   useEffect(() => {
-    if (!id || !isFirebaseConfigured()) {
+    if (!id) {
       setLoading(false);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const user = await ensureAnonymousAuth();
-        if (!user || cancelled) return;
-        const token = await user.getIdToken();
-        const res = await fetch(`/api/contacts/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch(`/api/contacts/${id}`, { credentials: "include" });
         if (res.ok && !cancelled) setContact(await res.json());
       } catch {
         // ignore
@@ -49,13 +43,10 @@ export default function ContactDetailPage() {
   }, [id]);
 
   async function loadDossiers() {
-    if (!isFirebaseConfigured() || !id) return;
+    if (!id) return;
     try {
-      const user = await ensureAnonymousAuth();
-      if (!user) return;
-      const token = await user.getIdToken();
       const res = await fetch(`/api/dossiers?contactId=${encodeURIComponent(id)}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       if (res.ok) {
         const data = await res.json();
@@ -75,14 +66,11 @@ export default function ContactDetailPage() {
     setTrendsLoading(true);
     setTrends(null);
     try {
-      const user = await ensureAnonymousAuth();
-      if (!user) return;
-      const token = await user.getIdToken();
       const params = new URLSearchParams();
       if (contact.stockTicker) params.set("ticker", contact.stockTicker);
       if (contact.company) params.set("name", contact.company);
       const res = await fetch(`/api/company/trends?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       if (res.ok) setTrends(await res.json());
     } catch (e) {
@@ -96,19 +84,14 @@ export default function ContactDetailPage() {
     setQuestionsLoading(true);
     setQuestions([]);
     try {
-      const user = await ensureAnonymousAuth();
-      if (!user) return;
-      const token = await user.getIdToken();
       const trendsSummary =
         trends != null
           ? JSON.stringify({ profile: trends.profile, newsHeadlines: trends.news?.map((n) => n.headline) })
           : "";
       const res = await fetch("/api/conversation-starters", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           contactName: contact?.name,
           company: contact?.company,

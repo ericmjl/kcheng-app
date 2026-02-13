@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { ensureAnonymousAuth, isFirebaseConfigured } from "@/lib/firebase";
 
 type Props = {
   contactId: string;
@@ -59,15 +58,12 @@ export function MeetingRecorder({
     setUploading(true);
     setTranscript("");
     try {
-      const user = await ensureAnonymousAuth();
-      if (!user) return;
-      const token = await user.getIdToken();
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
       const form = new FormData();
       form.append("file", blob, "recording.webm");
       const res = await fetch("/api/transcribe", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
         body: form,
       });
       if (res.ok) {
@@ -85,15 +81,10 @@ export function MeetingRecorder({
     if (!transcript.trim()) return;
     setSummarizing(true);
     try {
-      const user = await ensureAnonymousAuth();
-      if (!user) return;
-      const token = await user.getIdToken();
       const res = await fetch("/api/dossiers/summarize", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ transcript }),
       });
       if (res.ok) {
@@ -109,18 +100,12 @@ export function MeetingRecorder({
   }
 
   async function saveDossier() {
-    if (!isFirebaseConfigured()) return;
     setSaving(true);
     try {
-      const user = await ensureAnonymousAuth();
-      if (!user) return;
-      const token = await user.getIdToken();
       const res = await fetch("/api/dossiers", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           contactId,
           eventId: eventId || undefined,

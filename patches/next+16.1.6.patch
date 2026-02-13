@@ -1,0 +1,22 @@
+diff --git a/node_modules/next/dist/server/lib/router-utils/resolve-routes.js b/node_modules/next/dist/server/lib/router-utils/resolve-routes.js
+index ae67d16..5ee5c4a 100644
+--- a/node_modules/next/dist/server/lib/router-utils/resolve-routes.js
++++ b/node_modules/next/dist/server/lib/router-utils/resolve-routes.js
+@@ -475,13 +475,10 @@ function getResolveRoutes(fsChecker, config, opts, renderServer, renderServerOpt
+                             }
+                         }
+                         if (middlewareHeaders['x-middleware-refresh']) {
+-                            return {
+-                                parsedUrl,
+-                                resHeaders,
+-                                finished: true,
+-                                bodyStream,
+-                                statusCode: middlewareRes.status
+-                            };
++                            // Do not return: allow the route loop to continue so the request
++                            // is handled with updated req headers (e.g. AuthKit x-workos-*).
++                            // Returning here would send the empty middleware response and
++                            // never render the page.
+                         }
+                     }
+                 }

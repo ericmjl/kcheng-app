@@ -21,11 +21,15 @@ export async function POST(request: NextRequest) {
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await request.json();
+    const contactIds = Array.isArray(body.contactIds)
+      ? (body.contactIds as string[]).filter((id): id is string => typeof id === "string").slice(0, 50)
+      : undefined;
     const client = await getConvexClient(uid);
     const doc = await client.mutation(api.todos.create, {
       text: String(body.text ?? "").trim(),
       done: typeof body.done === "boolean" ? body.done : undefined,
       dueDate: body.dueDate ? String(body.dueDate) : undefined,
+      contactIds: contactIds?.length ? contactIds : undefined,
     });
     return NextResponse.json(doc);
   } catch (e) {

@@ -31,6 +31,7 @@ export const create = mutation({
     text: v.string(),
     done: v.optional(v.boolean()),
     dueDate: v.optional(v.string()),
+    contactIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -40,6 +41,7 @@ export const create = mutation({
       text: args.text.trim(),
       done: args.done ?? false,
       dueDate: args.dueDate,
+      ...(args.contactIds?.length ? { contactIds: args.contactIds } : {}),
       createdAt: now,
       updatedAt: now,
     });
@@ -54,6 +56,7 @@ export const update = mutation({
     text: v.optional(v.string()),
     done: v.optional(v.boolean()),
     dueDate: v.optional(v.string()),
+    contactIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);

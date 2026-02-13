@@ -29,12 +29,18 @@ export async function PATCH(
   try {
     const body = await request.json();
     const id = (await params).id;
-    const args: { id: string; title?: string; start?: string; end?: string; location?: string; contactId?: string; notes?: string } = { id };
+    const args: { id: string; title?: string; start?: string; end?: string; location?: string; contactIds?: string[]; notes?: string } = { id };
     if (body.title !== undefined) args.title = String(body.title);
     if (body.start !== undefined) args.start = String(body.start);
     if (body.end !== undefined) args.end = body.end ? String(body.end) : undefined;
     if (body.location !== undefined) args.location = body.location ? String(body.location) : undefined;
-    if (body.contactId !== undefined) args.contactId = body.contactId ?? undefined;
+    if (body.contactIds !== undefined) {
+      args.contactIds = Array.isArray(body.contactIds)
+        ? body.contactIds.filter((id): id is string => typeof id === "string").slice(0, 50)
+        : [];
+    } else if (body.contactId !== undefined) {
+      args.contactIds = body.contactId ? [String(body.contactId)] : [];
+    }
     if (body.notes !== undefined) args.notes = body.notes ? String(body.notes) : undefined;
     const client = await getConvexClient(uid);
     const doc = await client.mutation(api.events.update, args as any);

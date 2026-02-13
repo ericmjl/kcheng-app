@@ -46,12 +46,17 @@ export function WhatsNext({ events, maxItems = 3 }: Props) {
             timeStr = ev.start;
           }
           return (
-            <li key={ev.id} className="flex flex-col gap-0.5">
-              <span className="font-medium text-[var(--text)]">{ev.title}</span>
-              <span className="text-sm text-[var(--text-muted)]">{timeStr}</span>
-              {ev.location && (
-                <span className="text-sm text-[var(--text-muted)]/80">{ev.location}</span>
-              )}
+            <li key={ev.id}>
+              <Link
+                href={`/events/${ev.id}`}
+                className="flex flex-col gap-0.5 rounded-lg -m-1 p-1 transition-colors hover:bg-[var(--sky-soft)]/40"
+              >
+                <span className="font-medium text-[var(--text)]">{ev.title}</span>
+                <span className="text-sm text-[var(--text-muted)]">{timeStr}</span>
+                {ev.location && (
+                  <span className="text-sm text-[var(--text-muted)]/80">{ev.location}</span>
+                )}
+              </Link>
             </li>
           );
         })}

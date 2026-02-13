@@ -12,10 +12,20 @@ import { getOpenAIKey } from "@/lib/llm-keys";
 
 const SYSTEM_PROMPT_BASE = `You are a helpful assistant for a China trip planner. You create contacts, calendar events, and todos by calling tools. You MUST call the tools—never just describe what you would do in text.
 
-Rules:
-- When the user mentions meeting someone (e.g. "meeting with Lee Wei at 3pm", "I have a meeting with Jane on Tuesday at 2pm"): (1) call createContact with the person's name, (2) call createEvent with a title like "Meeting with [Name]", start as ISO 8601 datetime, and optionally location/notes. Always create both the contact and the event.
-- When the user says they met someone (e.g. "I just met John from Acme Corp"): call createContact with name and company (and role/notes if mentioned).
-- When the user says they want to follow up or have a todo: call createTodo with the task text and optional dueDate (ISO date).
+RESOLVED CONTACTS (user tagged someone with @ from their contact list): If the user's message ends with a line like "[Resolved contacts - use these ids directly, do not ask to confirm: Name1 (id: id1), Name2 (id: id2).]" then the user has already selected these contacts. You MUST use those exact contact ids (id1, id2, etc.) when creating events or todos. Do NOT call findContactsByName for those names. Do NOT ask "which contact?" or show disambiguation—just use the given ids (e.g. contactIds: [id1] or [id1, id2]) and create the event or todo in one step.
+
+Rules for MEETINGS (e.g. "meeting with Lee Wei at 3pm", "I have a meeting with Jane on Tuesday at 2pm"):
+- If the message includes resolved contact ids (see above), use them directly and call createEvent with contactIds: [those ids]. Do not ask to confirm.
+- Otherwise: FIRST call findContactsByName with the person's name (the name they mentioned).
+- If findContactsByName returns one or more contacts: Do NOT call createContact. Reply in one short sentence that you found existing contacts and the user can click one below or say "Create new contact". Do not create any contact or event yet—wait for the user to choose.
+- If the user then replies with a contact choice (e.g. "Use contact Yan Kou" or "Use contact Yan Kou (GSK)"): call findContactsByName with the person's name to get the contact id, then call createEvent with contactIds: [that id] and the event details. If the message includes a company in parentheses, use it to pick the right contact when there are multiple matches. Do not call createContact.
+- If the user says "create new contact" or "new" or "create new": then call createContact and createEvent with contactIds: [the new contact's id].
+- If the user mentions multiple people for one meeting (e.g. "meeting with Jane and Bob at 3pm"): find or create each contact, then call createEvent with contactIds: [id1, id2, ...].
+- If findContactsByName returns zero contacts: call createContact then createEvent as usual (no disambiguation).
+
+Rules for "I met someone" (no meeting time): call createContact only. If the message includes resolved contact ids, the contact already exists—do nothing (or use the id if creating a todo). Otherwise: First call findContactsByName; if matches exist, ask the user to pick one or say "create new". If they pick, do nothing (contact already exists). If they say create new or no matches, call createContact.
+
+Rules for todos: call createTodo with the task text and optional dueDate (ISO date).
 - Use ISO 8601 for all dates/times. When the user says "today", "tomorrow", or gives only a time (e.g. "3pm"), use a date within the trip range (see below).
 - After calling tools, briefly confirm what you created.
 
@@ -143,6 +153,32 @@ export async function POST(request: NextRequest) {
     messages: modelMessages,
     stopWhen: stepCountIs(5),
     tools: {
+      findContactsByName: tool({
+        description: "Search existing contacts by name. Call this before creating a new contact or meeting so we can avoid duplicates. Returns contacts whose name contains the query (case-insensitive).",
+        inputSchema: z.object({
+          name: z.string().describe("Person's name or part of it to search for"),
+        }),
+        execute: async ({ name }) => {
+          try {
+            const list = await convexClient.query(api.contacts.list);
+            const query = String(name ?? "").trim().toLowerCase();
+            if (!query) return { contacts: [] };
+            const contacts = (list ?? []).filter(
+              (c) => c.name?.toLowerCase().includes(query)
+            );
+            return {
+              contacts: contacts.slice(0, 10).map((c) => ({
+                id: c.id,
+                name: c.name,
+                company: c.company ?? undefined,
+              })),
+            };
+          } catch (e) {
+            console.error("[chat] findContactsByName error", e);
+            return { contacts: [] };
+          }
+        },
+      }),
       createContact: tool({
         description: "Create a new contact (person met or to meet).",
         inputSchema: z.object({
@@ -172,15 +208,16 @@ export async function POST(request: NextRequest) {
         },
       }),
       createEvent: tool({
-        description: "Create a calendar event (meeting, appointment, etc.). Use ISO 8601 for start/end.",
+        description: "Create a calendar event (meeting, appointment). Use ISO 8601 for start/end. Pass contactIds (array of contact ids) when linking to one or more existing contacts.",
         inputSchema: z.object({
           title: z.string().describe("Event title (e.g. 'Meeting with Jane')"),
           start: z.string().describe("Start datetime in ISO 8601 format"),
           end: z.string().optional().describe("End datetime in ISO 8601 format"),
           location: z.string().optional(),
           notes: z.string().optional(),
+          contactIds: z.array(z.string()).optional().describe("Contact ids for people in this meeting (from findContactsByName or createContact)"),
         }),
-        execute: async ({ title, start, end, location, notes }) => {
+        execute: async ({ title, start, end, location, notes, contactIds }) => {
           try {
             if (!hasTripRange) {
               const err = new Error(
@@ -204,11 +241,13 @@ export async function POST(request: NextRequest) {
               console.warn("[chat] createEvent rejected (end out of range):", title, end);
               throw err;
             }
+            const ids = Array.isArray(contactIds) ? contactIds.filter((id) => typeof id === "string" && id.trim()).map((id) => id.trim()) : [];
             const doc = await convexClient.mutation(api.events.create, {
               title: String(title ?? ""),
               start: startStr,
               end: end ? String(end) : undefined,
               location: location ? String(location) : undefined,
+              contactIds: ids.length ? ids : undefined,
               notes: notes ? String(notes) : undefined,
             });
             console.log("[chat] createEvent ok:", title, startStr, doc?._id);
@@ -220,12 +259,13 @@ export async function POST(request: NextRequest) {
         },
       }),
       createTodo: tool({
-        description: "Create a todo or follow-up task.",
+        description: "Create a todo or follow-up task. Pass contactIds when the user @-mentioned specific contacts.",
         inputSchema: z.object({
           text: z.string().describe("The task or follow-up description"),
           dueDate: z.string().optional().describe("Due date in ISO 8601 date format (YYYY-MM-DD)"),
+          contactIds: z.array(z.string()).optional().describe("Contact ids when the user tagged someone with @ (from resolved contacts in the message)"),
         }),
-        execute: async ({ text, dueDate }) => {
+        execute: async ({ text, dueDate, contactIds }) => {
           try {
             if (dueDate) {
               if (!hasTripRange) {
@@ -246,6 +286,7 @@ export async function POST(request: NextRequest) {
             const doc = await convexClient.mutation(api.todos.create, {
               text: String(text ?? "").trim(),
               dueDate: dueDate ? String(dueDate) : undefined,
+              contactIds: contactIds?.length ? contactIds : undefined,
             });
             console.log("[chat] createTodo ok:", text.slice(0, 40), doc?._id);
             return doc ?? { id: "", text: String(text ?? "").trim(), done: false };

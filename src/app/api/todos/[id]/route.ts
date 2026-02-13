@@ -12,10 +12,15 @@ export async function PATCH(
   try {
     const body = await request.json();
     const id = (await params).id;
-    const args: { id: string; text?: string; done?: boolean; dueDate?: string } = { id };
+    const args: { id: string; text?: string; done?: boolean; dueDate?: string; contactIds?: string[] } = { id };
     if (body.text !== undefined) args.text = String(body.text).trim();
     if (typeof body.done === "boolean") args.done = body.done;
     if (body.dueDate !== undefined) args.dueDate = body.dueDate ? String(body.dueDate) : undefined;
+    if (body.contactIds !== undefined) {
+      args.contactIds = Array.isArray(body.contactIds)
+        ? (body.contactIds as string[]).filter((id): id is string => typeof id === "string").slice(0, 50)
+        : [];
+    }
     const client = await getConvexClient(uid);
     const doc = await client.mutation(api.todos.update, args as any);
     return NextResponse.json(doc);

@@ -16,11 +16,21 @@ export type Event = {
   start: string; // ISO datetime
   end?: string;
   location?: string;
+  /** Preferred: list of contact ids. Use getEventContactIds() for backward compat with contactId. */
+  contactIds?: string[];
+  /** @deprecated Use contactIds. Kept for backward compat with existing events. */
   contactId?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
 };
+
+/** Normalize event participants to an array (supports legacy contactId). */
+export function getEventContactIds(event: Event): string[] {
+  if (event.contactIds?.length) return event.contactIds;
+  if (event.contactId) return [event.contactId];
+  return [];
+}
 
 export type Contact = {
   id: string;
@@ -48,6 +58,7 @@ export type Todo = {
   text: string;
   done: boolean;
   dueDate?: string; // ISO date
+  contactIds?: string[];
   createdAt: string;
   updatedAt: string;
 };

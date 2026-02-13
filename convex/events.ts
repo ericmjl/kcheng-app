@@ -31,7 +31,7 @@ export const create = mutation({
     start: v.string(),
     end: v.optional(v.string()),
     location: v.optional(v.string()),
-    contactId: v.optional(v.string()),
+    contactIds: v.optional(v.array(v.string())),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -43,7 +43,7 @@ export const create = mutation({
       start: args.start,
       ...(args.end && { end: args.end }),
       ...(args.location && { location: args.location }),
-      ...(args.contactId && { contactId: args.contactId }),
+      ...(args.contactIds?.length && { contactIds: args.contactIds }),
       ...(args.notes && { notes: args.notes }),
       createdAt: now,
       updatedAt: now,
@@ -60,7 +60,7 @@ export const update = mutation({
     start: v.optional(v.string()),
     end: v.optional(v.string()),
     location: v.optional(v.string()),
-    contactId: v.optional(v.string()),
+    contactIds: v.optional(v.array(v.string())),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {

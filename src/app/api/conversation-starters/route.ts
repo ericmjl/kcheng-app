@@ -56,7 +56,10 @@ export async function POST(request: NextRequest) {
       const allEvents = await client.query(api.events.list);
       const now = new Date().toISOString();
       const upcoming = (allEvents ?? [])
-        .filter((e: { contactId?: string; start?: string }) => e.contactId === contactId && (e.start ?? "") >= now)
+        .filter((e: { contactId?: string; contactIds?: string[]; start?: string }) => {
+          const hasContact = (e.contactIds && e.contactIds.includes(contactId)) || e.contactId === contactId;
+          return hasContact && (e.start ?? "") >= now;
+        })
         .sort((a: { start?: string }, b: { start?: string }) => (a.start ?? "").localeCompare(b.start ?? ""))
         .slice(0, 5);
       if (upcoming.length > 0) {

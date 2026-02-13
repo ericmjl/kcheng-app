@@ -21,7 +21,8 @@ import {
 } from "date-fns";
 import { getLocalSettings } from "@/lib/settings";
 import { cachedGet } from "@/lib/cachedFetch";
-import type { Event } from "@/lib/types";
+import type { Event, Contact } from "@/lib/types";
+import { getEventContactIds } from "@/lib/types";
 
 function getTripDays(tripStart: string, tripEnd: string): Date[] {
   if (!tripStart || !tripEnd) return [];
@@ -64,6 +65,7 @@ export default function CalendarPage() {
   const [tripStart, setTripStart] = useState("");
   const [tripEnd, setTripEnd] = useState("");
   const [events, setEvents] = useState<Event[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,6 +74,9 @@ export default function CalendarPage() {
   const [formStart, setFormStart] = useState("");
   const [formLocation, setFormLocation] = useState("");
   const [formNotes, setFormNotes] = useState("");
+  const [formContactIds, setFormContactIds] = useState<string[]>([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const searchParams = useSearchParams();
 
   const loadSettingsAndEvents = useCallback(async () => {
@@ -79,13 +84,22 @@ export default function CalendarPage() {
     setTripStart(local.tripStart ?? "");
     setTripEnd(local.tripEnd ?? "");
     try {
-      const data = await cachedGet<Event[]>("events", async () => {
-        const res = await fetch("/api/events", { credentials: "include" });
-        if (!res.ok) throw new Error("Failed to load events");
-        const json = await res.json();
-        return Array.isArray(json) ? json : [];
-      });
-      setEvents(data);
+      const [eventsData, contactsData] = await Promise.all([
+        cachedGet<Event[]>("events", async () => {
+          const res = await fetch("/api/events", { credentials: "include" });
+          if (!res.ok) throw new Error("Failed to load events");
+          const json = await res.json();
+          return Array.isArray(json) ? json : [];
+        }),
+        cachedGet<Contact[]>("contacts", async () => {
+          const res = await fetch("/api/contacts", { credentials: "include" });
+          if (!res.ok) return [];
+          const json = await res.json();
+          return Array.isArray(json) ? json : [];
+        }),
+      ]);
+      setEvents(eventsData);
+      setContacts(contactsData);
     } catch (e) {
       console.warn("Events load failed", e);
     }
@@ -121,6 +135,7 @@ export default function CalendarPage() {
       setFormStart(ev.start ? format(parseISO(ev.start), "HH:mm") : "");
       setFormLocation(ev.location ?? "");
       setFormNotes(ev.notes ?? "");
+      setFormContactIds(getEventContactIds(ev));
     }
   }, [editIdFromUrl, events]);
   useEffect(() => {
@@ -134,46 +149,61 @@ export default function CalendarPage() {
 
   async function saveEvent(e: React.FormEvent) {
     e.preventDefault();
-    if (!formTitle.trim() || !selectedDay) return;
-    const dayStr = format(selectedDay, "yyyy-MM-dd");
-    const start = formStart ? `${dayStr}T${formStart}:00` : `${dayStr}T09:00:00`;
-    if (editingEvent) {
-      const res = await fetch(`/api/events/${editingEvent.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          title: formTitle.trim(),
-          start,
-          location: formLocation.trim() || undefined,
-          notes: formNotes.trim() || undefined,
-        }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
+    setSaveError(null);
+    if (!formTitle.trim() || !selectedDay) {
+      setSaveError("Please enter a title and ensure a day is selected.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const dayStr = format(selectedDay, "yyyy-MM-dd");
+      const start = formStart ? `${dayStr}T${formStart}:00` : `${dayStr}T09:00:00`;
+      if (editingEvent) {
+        const res = await fetch(`/api/events/${editingEvent.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            title: formTitle.trim(),
+            start,
+            location: formLocation.trim() || undefined,
+            contactIds: formContactIds.length ? formContactIds : undefined,
+            notes: formNotes.trim() || undefined,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setSaveError(data.error ?? "Failed to update event. Please try again.");
+          return;
+        }
         setEvents((prev) =>
-          prev.map((ev) => (ev.id === updated.id ? updated : ev))
+          prev.map((ev) => (ev.id === data.id ? data : ev))
         );
         setEditingEvent(null);
         resetForm();
-      }
-    } else {
-      const res = await fetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          title: formTitle.trim(),
-          start,
-          location: formLocation.trim() || undefined,
-          notes: formNotes.trim() || undefined,
-        }),
-      });
-      if (res.ok) {
-        const created = await res.json();
-        setEvents((prev) => [...prev, created]);
+      } else {
+        const res = await fetch("/api/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            title: formTitle.trim(),
+            start,
+            location: formLocation.trim() || undefined,
+            contactIds: formContactIds.length ? formContactIds : undefined,
+            notes: formNotes.trim() || undefined,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setSaveError(data.error ?? "Failed to create event. Please try again.");
+          return;
+        }
+        setEvents((prev) => [...prev, data]);
         resetForm();
       }
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -182,7 +212,9 @@ export default function CalendarPage() {
     setFormStart("");
     setFormLocation("");
     setFormNotes("");
+    setFormContactIds([]);
     setEditingEvent(null);
+    setSaveError(null);
   }
 
   function startEdit(ev: Event) {
@@ -191,7 +223,16 @@ export default function CalendarPage() {
     setFormStart(ev.start ? format(parseISO(ev.start), "HH:mm") : "");
     setFormLocation(ev.location ?? "");
     setFormNotes(ev.notes ?? "");
+    setFormContactIds(getEventContactIds(ev));
   }
+
+  function toggleFormContact(id: string) {
+    setFormContactIds((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+    );
+  }
+
+  const contactById = useMemo(() => Object.fromEntries(contacts.map((c) => [c.id, c])), [contacts]);
 
   async function deleteEvent(id: string) {
     const res = await fetch(`/api/events/${id}`, {
@@ -293,11 +334,16 @@ export default function CalendarPage() {
 
       {/* Selected day detail */}
       {selectedDay ? (
-        <section className="rounded-xl border border-[var(--mint-soft)] bg-[var(--cream)] p-4 shadow-sm">
+        <section className="relative z-10 rounded-xl border border-[var(--mint-soft)] bg-[var(--cream)] p-4 shadow-sm">
           <h2 className="mb-4 text-lg font-medium text-[var(--text)]">
             {format(selectedDay, "EEEE, MMMM d, yyyy")}
           </h2>
           <form onSubmit={saveEvent} className="mb-6">
+            {saveError && (
+              <p className="mb-3 rounded-lg bg-[var(--peach)]/30 px-3 py-2 text-sm text-[var(--coral)]" role="alert">
+                {saveError}
+              </p>
+            )}
             <input
               type="text"
               placeholder="Event title"
@@ -321,6 +367,32 @@ export default function CalendarPage() {
                 className="flex-1 rounded-lg border border-[var(--mint-soft)] bg-[var(--wall)] px-3 py-2 text-[var(--text)] placeholder-[var(--text-muted)]"
               />
             </div>
+            <div className="mb-2">
+              <label className="mb-1 block text-xs text-[var(--text-muted)]">With (contacts)</label>
+              <div className="max-h-32 overflow-y-auto rounded-lg border border-[var(--mint-soft)] bg-[var(--wall)] p-2">
+                {contacts.length === 0 ? (
+                  <p className="py-1 text-sm text-[var(--text-muted)]">No contacts yet</p>
+                ) : (
+                  contacts.map((c) => (
+                    <label
+                      key={c.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-[var(--mint-soft)]/30"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formContactIds.includes(c.id)}
+                        onChange={() => toggleFormContact(c.id)}
+                        className="rounded border-[var(--mint-soft)]"
+                      />
+                      <span className="text-sm text-[var(--text)]">
+                        {c.name}
+                        {c.company ? ` (${c.company})` : ""}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
             <textarea
               placeholder="Notes"
               value={formNotes}
@@ -331,22 +403,24 @@ export default function CalendarPage() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                className="rounded-lg bg-[var(--mint)] px-3 py-1.5 text-sm font-medium text-[var(--text)] hover:opacity-90"
+                disabled={saving}
+                className="relative z-[1] rounded-lg bg-[var(--mint)] px-3 py-1.5 text-sm font-medium text-[var(--text)] hover:opacity-90 disabled:opacity-60 disabled:pointer-events-none"
               >
-                {editingEvent ? "Update" : "Add"} event
+                {saving ? "Saving…" : editingEvent ? "Update" : "Add"} event
               </button>
               {editingEvent && (
                 <button
                   type="button"
+                  disabled={saving}
                   onClick={resetForm}
-                  className="rounded-lg border border-[var(--mint-soft)] px-3 py-1.5 text-sm text-[var(--text-muted)] hover:bg-[var(--mint-soft)]"
+                  className="relative z-[1] rounded-lg border border-[var(--mint-soft)] px-3 py-1.5 text-sm text-[var(--text-muted)] hover:bg-[var(--mint-soft)] disabled:opacity-60"
                 >
                   Cancel
                 </button>
               )}
             </div>
           </form>
-          <ul className="space-y-2">
+          <ul className="relative z-0 space-y-2">
             {selectedDayEvents
               .sort(
                 (a, b) =>
@@ -357,27 +431,49 @@ export default function CalendarPage() {
                   key={ev.id}
                   className="flex items-start justify-between gap-2 rounded-lg border border-[var(--mint-soft)] bg-[var(--wall)] p-3"
                 >
-                  <Link
-                    href={`/events/${ev.id}`}
-                    className="min-w-0 flex-1 cursor-pointer rounded pr-2 transition-colors hover:bg-[var(--mint-soft)]/30 -m-1 p-1"
-                  >
-                    <p className="font-medium text-[var(--text)]">{ev.title}</p>
-                    {ev.start && (
-                      <p className="text-sm text-[var(--text-muted)]">
-                        {format(parseISO(ev.start), "h:mm a")}
-                      </p>
-                    )}
-                    {ev.location && (
-                      <p className="text-sm text-[var(--text-muted)]">
-                        {ev.location}
-                      </p>
-                    )}
-                    {ev.notes && (
-                      <p className="mt-1 line-clamp-2 text-sm text-[var(--text)]">
-                        {ev.notes}
-                      </p>
-                    )}
-                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/events/${ev.id}`}
+                      className="block cursor-pointer rounded pr-2 py-1 transition-colors hover:bg-[var(--mint-soft)]/30"
+                    >
+                      <p className="font-medium text-[var(--text)]">{ev.title}</p>
+                      {ev.start && (
+                        <p className="text-sm text-[var(--text-muted)]">
+                          {format(parseISO(ev.start), "h:mm a")}
+                        </p>
+                      )}
+                      {ev.location && (
+                        <p className="text-sm text-[var(--text-muted)]">
+                          {ev.location}
+                        </p>
+                      )}
+                      {ev.notes && (
+                        <p className="mt-1 line-clamp-2 text-sm text-[var(--text)]">
+                          {ev.notes}
+                        </p>
+                      )}
+                    </Link>
+                    {(() => {
+                      const ids = getEventContactIds(ev);
+                      const contactList = ids.map((cid) => contactById[cid]).filter(Boolean) as Contact[];
+                      if (contactList.length === 0) return null;
+                      return (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {contactList.map((c) => (
+                            <Link
+                              key={c.id}
+                              href={`/contacts/${c.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 rounded-full border border-[var(--mint-soft)] bg-[var(--cream)] px-2.5 py-0.5 text-xs font-medium text-[var(--text)] shadow-sm transition-colors hover:border-[var(--mint)] hover:bg-[var(--mint-soft)]"
+                            >
+                              {c.company ? `${c.name} (${c.company})` : c.name}
+                              <span className="text-[var(--text-muted)]" aria-hidden>→</span>
+                            </Link>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
                   <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"

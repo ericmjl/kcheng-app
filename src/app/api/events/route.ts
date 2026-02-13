@@ -23,12 +23,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const now = new Date().toISOString();
     const client = await getConvexClient(uid);
+    const contactIds = Array.isArray(body.contactIds)
+      ? body.contactIds.filter((id): id is string => typeof id === "string").slice(0, 50)
+      : body.contactId
+        ? [String(body.contactId)]
+        : undefined;
     const doc = await client.mutation(api.events.create, {
       title: String(body.title ?? ""),
       start: String(body.start ?? now),
       end: body.end ? String(body.end) : undefined,
       location: body.location ? String(body.location) : undefined,
-      contactId: body.contactId ?? undefined,
+      contactIds: contactIds?.length ? contactIds : undefined,
       notes: body.notes ? String(body.notes) : undefined,
     });
     return NextResponse.json(doc);

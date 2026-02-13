@@ -54,7 +54,8 @@ export default defineSchema({
     start: v.string(),
     end: v.optional(v.string()),
     location: v.optional(v.string()),
-    contactId: v.optional(v.string()),
+    contactIds: v.optional(v.array(v.string())),
+    contactId: v.optional(v.string()), // legacy; prefer contactIds
     notes: v.optional(v.string()),
     createdAt: v.string(),
     updatedAt: v.string(),
@@ -65,6 +66,7 @@ export default defineSchema({
     text: v.string(),
     done: v.boolean(),
     dueDate: v.optional(v.string()),
+    contactIds: v.optional(v.array(v.string())),
     createdAt: v.string(),
     updatedAt: v.string(),
   }).index("by_userId", ["userId"]),

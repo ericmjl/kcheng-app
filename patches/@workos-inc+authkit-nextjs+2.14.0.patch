@@ -1,0 +1,49 @@
+diff --git a/node_modules/@workos-inc/authkit-nextjs/dist/esm/session.js b/node_modules/@workos-inc/authkit-nextjs/dist/esm/session.js
+index e64ba84..967d308 100644
+--- a/node_modules/@workos-inc/authkit-nextjs/dist/esm/session.js
++++ b/node_modules/@workos-inc/authkit-nextjs/dist/esm/session.js
+@@ -59,9 +59,16 @@ function isInitialDocumentRequest(request) {
+         request.headers.has('Next-Router-Prefetch');
+     return isDocumentRequest && !isRSCRequest && !isPrefetch;
+ }
++function getCookiePassword() {
++    return (typeof process !== 'undefined' && process.env.WORKOS_COOKIE_PASSWORD) || WORKOS_COOKIE_PASSWORD;
++}
+ async function encryptSession(session) {
++    const password = getCookiePassword();
++    if (!password || password.length < 32) {
++        throw new Error('You must provide a valid cookie password that is at least 32 characters in the environment variables.');
++    }
+     return sealData(session, {
+-        password: WORKOS_COOKIE_PASSWORD,
++        password,
+         ttl: 0,
+     });
+ }
+@@ -69,7 +76,7 @@ async function updateSessionMiddleware(request, debug, middlewareAuth, redirectU
+     if (!redirectUri && !WORKOS_REDIRECT_URI) {
+         throw new Error('You must provide a redirect URI in the AuthKit middleware or in the environment variables.');
+     }
+-    if (!WORKOS_COOKIE_PASSWORD || WORKOS_COOKIE_PASSWORD.length < 32) {
++    if (!getCookiePassword() || getCookiePassword().length < 32) {
+         throw new Error('You must provide a valid cookie password that is at least 32 characters in the environment variables.');
+     }
+     let url;
+@@ -364,7 +371,7 @@ export async function getSessionFromCookie(request) {
+     }
+     if (cookie) {
+         return unsealData(cookie.value, {
+-            password: WORKOS_COOKIE_PASSWORD,
++            password: getCookiePassword(),
+         });
+     }
+ }
+@@ -378,7 +385,7 @@ async function getSessionFromHeader() {
+     const authHeader = headersList.get(sessionHeaderName);
+     if (!authHeader)
+         return;
+-    return unsealData(authHeader, { password: WORKOS_COOKIE_PASSWORD });
++    return unsealData(authHeader, { password: getCookiePassword() });
+ }
+ function getReturnPathname(url) {
+     const newUrl = new URL(url);

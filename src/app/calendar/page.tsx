@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   format,
   parseISO,
@@ -70,6 +72,7 @@ export default function CalendarPage() {
   const [formStart, setFormStart] = useState("");
   const [formLocation, setFormLocation] = useState("");
   const [formNotes, setFormNotes] = useState("");
+  const searchParams = useSearchParams();
 
   const loadSettingsAndEvents = useCallback(async () => {
     const local = getLocalSettings();
@@ -104,6 +107,25 @@ export default function CalendarPage() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [loadSettingsAndEvents]);
+
+  const editIdFromUrl = searchParams.get("edit");
+  const appliedEditIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editIdFromUrl || events.length === 0 || appliedEditIdRef.current === editIdFromUrl) return;
+    const ev = events.find((e) => e.id === editIdFromUrl);
+    if (ev) {
+      appliedEditIdRef.current = editIdFromUrl;
+      setSelectedDay(parseISO(ev.start));
+      setEditingEvent(ev);
+      setFormTitle(ev.title);
+      setFormStart(ev.start ? format(parseISO(ev.start), "HH:mm") : "");
+      setFormLocation(ev.location ?? "");
+      setFormNotes(ev.notes ?? "");
+    }
+  }, [editIdFromUrl, events]);
+  useEffect(() => {
+    if (!editIdFromUrl) appliedEditIdRef.current = null;
+  }, [editIdFromUrl]);
 
   const calendarRows = useMemo(() => getCalendarDays(currentMonth), [currentMonth]);
   const selectedDayEvents = selectedDay
@@ -335,7 +357,10 @@ export default function CalendarPage() {
                   key={ev.id}
                   className="flex items-start justify-between gap-2 rounded-lg border border-[var(--mint-soft)] bg-[var(--wall)] p-3"
                 >
-                  <div>
+                  <Link
+                    href={`/events/${ev.id}`}
+                    className="min-w-0 flex-1 cursor-pointer rounded pr-2 transition-colors hover:bg-[var(--mint-soft)]/30 -m-1 p-1"
+                  >
                     <p className="font-medium text-[var(--text)]">{ev.title}</p>
                     {ev.start && (
                       <p className="text-sm text-[var(--text-muted)]">
@@ -348,12 +373,12 @@ export default function CalendarPage() {
                       </p>
                     )}
                     {ev.notes && (
-                      <p className="mt-1 text-sm text-[var(--text)]">
+                      <p className="mt-1 line-clamp-2 text-sm text-[var(--text)]">
                         {ev.notes}
                       </p>
                     )}
-                  </div>
-                  <div className="flex gap-1">
+                  </Link>
+                  <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
                       onClick={() => startEdit(ev)}

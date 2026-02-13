@@ -3,6 +3,23 @@ import { NextResponse } from "next/server";
 import { getConvexClient, api } from "@/lib/convex-server";
 import { getUid } from "@/lib/workos-auth";
 
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const uid = await getUid(request);
+  if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const client = await getConvexClient(uid);
+    const doc = await client.query(api.events.get, { id: (await params).id as any });
+    if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(doc);
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: "Failed to load event" }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

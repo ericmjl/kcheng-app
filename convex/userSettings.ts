@@ -45,6 +45,10 @@ export const set = mutation({
         })
       )
     ),
+    tripSummary: v.optional(v.string()),
+    tripSummaryUpdatedAt: v.optional(v.string()),
+    tripKnowledgeGraph: v.optional(v.string()),
+    tripKnowledgeGraphUpdatedAt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -52,13 +56,6 @@ export const set = mutation({
       .query("userSettings")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .first();
-    const updates = {
-      ...(args.tripStart !== undefined && { tripStart: args.tripStart }),
-      ...(args.tripEnd !== undefined && { tripEnd: args.tripEnd }),
-      ...(args.timezone !== undefined && { timezone: args.timezone }),
-      ...(args.apiKeys !== undefined && { apiKeys: args.apiKeys }),
-      ...(args.savedPlaces !== undefined && { savedPlaces: args.savedPlaces }),
-    };
     if (existing) {
       const merged = {
         tripStart: args.tripStart ?? existing.tripStart,
@@ -66,6 +63,10 @@ export const set = mutation({
         timezone: args.timezone ?? existing.timezone,
         apiKeys: args.apiKeys ?? existing.apiKeys,
         savedPlaces: args.savedPlaces ?? existing.savedPlaces,
+        tripSummary: args.tripSummary !== undefined ? args.tripSummary : existing.tripSummary,
+        tripSummaryUpdatedAt: args.tripSummaryUpdatedAt !== undefined ? args.tripSummaryUpdatedAt : existing.tripSummaryUpdatedAt,
+        tripKnowledgeGraph: args.tripKnowledgeGraph !== undefined ? args.tripKnowledgeGraph : existing.tripKnowledgeGraph,
+        tripKnowledgeGraphUpdatedAt: args.tripKnowledgeGraphUpdatedAt !== undefined ? args.tripKnowledgeGraphUpdatedAt : existing.tripKnowledgeGraphUpdatedAt,
       };
       await ctx.db.patch(existing._id, merged);
       return { ...existing, ...merged };
@@ -77,6 +78,10 @@ export const set = mutation({
       timezone: args.timezone ?? defaults.timezone,
       ...(args.apiKeys && { apiKeys: args.apiKeys }),
       ...(args.savedPlaces && { savedPlaces: args.savedPlaces }),
+      ...(args.tripSummary !== undefined && { tripSummary: args.tripSummary }),
+      ...(args.tripSummaryUpdatedAt !== undefined && { tripSummaryUpdatedAt: args.tripSummaryUpdatedAt }),
+      ...(args.tripKnowledgeGraph !== undefined && { tripKnowledgeGraph: args.tripKnowledgeGraph }),
+      ...(args.tripKnowledgeGraphUpdatedAt !== undefined && { tripKnowledgeGraphUpdatedAt: args.tripKnowledgeGraphUpdatedAt }),
     });
     return (await ctx.db.get(id))!;
   },

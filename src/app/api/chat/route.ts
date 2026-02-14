@@ -9,6 +9,9 @@ import {
 } from "@/lib/parse-document";
 import { getUid } from "@/lib/workos-auth";
 import { getOpenAIKey } from "@/lib/llm-keys";
+import { generateTripSummaryContent } from "@/lib/generate-trip-summary";
+import { buildKnowledgeGraph, knowledgeGraphToSummary } from "@/lib/knowledge-graph";
+import type { Id } from "../../../../convex/_generated/dataModel";
 
 const SYSTEM_PROMPT_BASE = `You are a helpful assistant for a China trip planner. You create contacts, calendar events, and todos by calling tools. You MUST call the tools—never just describe what you would do in text.
 
@@ -38,6 +41,25 @@ Photos and images:
 - The user may attach a photo (e.g. a business card, contact screenshot, or image containing contact details). You can see the image content.
 - When a photo clearly shows contact information (name, and optionally company, role, phone, email, etc.), extract the details and call createContact immediately. Do not ask for confirmation—create the contact. Use title case for name, company, and role (e.g. "John Smith", not "JOHN SMITH"). If multiple people appear in one image, call createContact for each.
 - If the image does not contain contact information, say so briefly and do not create a contact.
+
+Notes (continual note-taking):
+- When the user is clearly jotting a note (e.g. "Note: ...", "Remember ...", "Just a note: ...") or shares a standalone thought with no meeting, contact, or todo intent, call saveNote with the content. Optionally include contactIds or eventIds if they @-mentioned contacts or referred to a specific event. Do not create events, contacts, or todos for pure notes. Confirm briefly that you saved the note.
+
+Brain dump / long notes (e.g. "here are my notes", "brain dump", "process these notes", or a long pasted block):
+- Treat the message as raw notes to parse. Extract: (1) people/contacts (names, optionally company), (2) meetings/events (with date, time, and who is attending), (3) todos/follow-ups (task + optional due date and who it's for).
+- For each person mentioned: call findContactsByName with the name. If 0 matches: call createContact (with company if given), then use the new id. If 1 match: use that id. If 2+ matches: do NOT guess. Reply with one short question: "Which [Name] is this: [Option1 (Company1)], [Option2 (Company2)]? Or say 'create new' for a new contact." Wait for the user's reply before creating any event/todo/note that uses that person. When they pick, use that contact id; if they say "create new", call createContact and use the new id.
+- For each meeting: determine date/time (use trip range and date reference) and attendees. Resolve attendees using the rule above (disambiguate if multiple contacts). Then call createEvent with title, start (ISO 8601), and contactIds.
+- For each todo: call createTodo with text and optional dueDate; if the todo is clearly for a specific person, include contactIds after resolving (disambiguate if needed).
+- After creating contacts, events, and todos, call saveNote with the note content (or a short summary of the dump) and pass contactIds and eventIds for all entities this note is about—so the note is linked in the knowledge graph. You may save one note for the whole dump or split into multiple notes per topic; when in doubt, one note with the full content and all relevant contactIds and eventIds.
+- If anything is ambiguous (same name, "the meeting tomorrow" when there are several, "send to John" with multiple Johns), ask one clear disambiguation question before creating or linking. Do not guess. One question at a time if there are multiple ambiguities.
+
+Linking notes to contacts/events:
+- When the user asks to "link this note to [person/event]", "attach this note to Jane", or "associate the note about X with the Lunch meeting", use updateNoteLinks with the note id and the resolved contactIds and/or eventIds. First identify which note (e.g. from context or the list they see). If the person or event is ambiguous (multiple matches), ask which one before calling the tool.
+- Notes are first-class in the knowledge graph: linking a note to contacts and events creates "about" edges so the graph shows what each note refers to.
+
+Trip summary: When the user asks to "summarize my trip", "give me a trip summary", or similar, call generateTripSummary. It generates a narrative from their contacts, events, todos, meeting notes, and trip notes, saves it, and returns it. Show them the summary and say you have saved it.
+
+Knowledge graph: When the user asks who they are meeting, what follow-ups they have for someone, or how contacts/events/todos are connected, call getKnowledgeGraph to get an overview of contacts, events, todos, and their links. Use it to answer questions about the trip structure.
 
 Always call the tools when appropriate; do not skip tool calls.`;
 
@@ -313,6 +335,113 @@ export async function POST(request: NextRequest) {
             return doc ?? { id: "", text: String(text ?? "").trim(), done: false };
           } catch (e) {
             console.error("[chat] createTodo error:", text.slice(0, 40), e);
+            throw e;
+          }
+        },
+      }),
+      saveNote: tool({
+        description: "Save a freeform trip note (e.g. 'Note: ...', 'Remember ...', or a standalone thought). Use when the user is jotting something down with no meeting/todo/contact intent. Optionally link to contacts or events if they @-mentioned them.",
+        inputSchema: z.object({
+          content: z.string().describe("The note text to save"),
+          contactIds: z.array(z.string()).optional().describe("Contact ids if the note is about specific people (from @-mentions or resolved contacts)"),
+          eventIds: z.array(z.string()).optional().describe("Event ids if the note is about a specific meeting or event"),
+        }),
+        execute: async ({ content, contactIds, eventIds }) => {
+          try {
+            const doc = await convexClient.mutation(api.tripNotes.create, {
+              content: String(content ?? "").trim(),
+              contactIds: contactIds?.length ? contactIds : undefined,
+              eventIds: eventIds?.length ? eventIds : undefined,
+            });
+            console.log("[chat] saveNote ok:", doc?._id);
+            return doc ?? { id: "", content: String(content ?? "").trim() };
+          } catch (e) {
+            console.error("[chat] saveNote error:", e);
+            throw e;
+          }
+        },
+      }),
+      updateNoteLinks: tool({
+        description: "Link an existing trip note to contacts and/or events (for the knowledge graph). Use when the user says to link a note to a person or meeting, e.g. 'link this note to Jane', 'associate the note with the Lunch event'. Pass the note id and the resolved contactIds and/or eventIds.",
+        inputSchema: z.object({
+          noteId: z.string().describe("The trip note id to update"),
+          contactIds: z.array(z.string()).optional().describe("Contact ids to link this note to (replaces existing; from findContactsByName)"),
+          eventIds: z.array(z.string()).optional().describe("Event ids to link this note to (replaces existing)"),
+        }),
+        execute: async ({ noteId, contactIds, eventIds }) => {
+          try {
+            const doc = await convexClient.mutation(api.tripNotes.update, {
+              id: noteId as Id<"tripNotes">,
+              ...(contactIds !== undefined && { contactIds: contactIds?.length ? contactIds : undefined }),
+              ...(eventIds !== undefined && { eventIds: eventIds?.length ? eventIds : undefined }),
+            });
+            console.log("[chat] updateNoteLinks ok:", noteId);
+            return doc ?? { id: noteId, updated: true };
+          } catch (e) {
+            console.error("[chat] updateNoteLinks error:", e);
+            throw e;
+          }
+        },
+      }),
+      generateTripSummary: tool({
+        description: "Generate a narrative trip summary from the user's contacts, events, todos, meeting dossiers, and trip notes. Call when the user asks to summarize their trip or for a trip summary. Saves the summary and returns it.",
+        inputSchema: z.object({}),
+        execute: async () => {
+          try {
+            const summary = await generateTripSummaryContent(convexClient, openaiKey);
+            const now = new Date().toISOString();
+            await convexClient.mutation(api.userSettings.set, {
+              tripSummary: summary,
+              tripSummaryUpdatedAt: now,
+            });
+            console.log("[chat] generateTripSummary ok");
+            return { summary, saved: true };
+          } catch (e) {
+            console.error("[chat] generateTripSummary error:", e);
+            throw e;
+          }
+        },
+      }),
+      getKnowledgeGraph: tool({
+        description: "Get an overview of the user's trip knowledge graph: contacts, events, todos, and how they are linked (who attends which event, which todos are for which contact). Call when the user asks who they are meeting, what follow-ups they have, or how things connect.",
+        inputSchema: z.object({}),
+        execute: async () => {
+          try {
+            const [contacts, events, todos, tripNotes] = await Promise.all([
+              convexClient.query(api.contacts.list),
+              convexClient.query(api.events.list),
+              convexClient.query(api.todos.list),
+              convexClient.query(api.tripNotes.list),
+            ]);
+            const contactsList = (contacts ?? []).map((c: { id?: string; _id?: string; name?: string; company?: string }) => ({
+              id: String(c.id ?? c._id ?? ""),
+              name: c.name,
+              company: c.company,
+            }));
+            const eventsList = (events ?? []).map((e: { id?: string; _id?: string; title?: string; start?: string; contactIds?: string[]; contactId?: string }) => ({
+              id: String(e.id ?? e._id ?? ""),
+              title: e.title,
+              start: e.start,
+              contactIds: e.contactIds ?? (e.contactId ? [e.contactId] : []),
+              contactId: e.contactId,
+            }));
+            const todosList = (todos ?? []).map((t: { id?: string; _id?: string; text?: string; done?: boolean; contactIds?: string[] }) => ({
+              id: String(t.id ?? t._id ?? ""),
+              text: t.text,
+              done: t.done,
+              contactIds: t.contactIds,
+            }));
+            const notesList = (tripNotes ?? []).map((n: { id?: string; _id?: string; content?: string; contactIds?: string[]; eventIds?: string[] }) => ({
+              id: String(n.id ?? n._id ?? ""),
+              content: n.content,
+              contactIds: n.contactIds,
+              eventIds: n.eventIds,
+            }));
+            const graph = buildKnowledgeGraph(contactsList, eventsList, todosList, notesList);
+            const summary = knowledgeGraphToSummary(graph);
+            return { summary, nodeCount: graph.nodes.length, edgeCount: graph.edges.length };
+          } catch (e) {
+            console.error("[chat] getKnowledgeGraph error:", e);
             throw e;
           }
         },

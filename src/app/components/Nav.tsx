@@ -5,12 +5,11 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 
 const links = [
-  { href: "/", label: "Home" },
   { href: "/calendar", label: "Calendar" },
   { href: "/contacts", label: "Contacts" },
-  { href: "/todos", label: "Todos" },
-  { href: "/trains", label: "Trains" },
-  { href: "/didi", label: "Didi" },
+  { href: "/todos", label: "To-dos" },
+  { href: "/notes", label: "Notes" },
+  { href: "/knowledge-graph", label: "Knowledge Graph" },
   { href: "/settings", label: "Settings" },
 ];
 

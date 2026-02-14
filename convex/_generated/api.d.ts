@@ -17,6 +17,7 @@ import type * as plannedRoutes from "../plannedRoutes.js";
 import type * as pushSubscriptions from "../pushSubscriptions.js";
 import type * as reminders from "../reminders.js";
 import type * as todos from "../todos.js";
+import type * as tripNotes from "../tripNotes.js";
 import type * as userSettings from "../userSettings.js";
 
 import type {
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   pushSubscriptions: typeof pushSubscriptions;
   reminders: typeof reminders;
   todos: typeof todos;
+  tripNotes: typeof tripNotes;
   userSettings: typeof userSettings;
 }>;
 

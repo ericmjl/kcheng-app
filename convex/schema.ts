@@ -25,7 +25,20 @@ export default defineSchema({
         })
       )
     ),
+    tripSummary: v.optional(v.string()),
+    tripSummaryUpdatedAt: v.optional(v.string()),
+    tripKnowledgeGraph: v.optional(v.string()),
+    tripKnowledgeGraphUpdatedAt: v.optional(v.string()),
   }).index("by_userId", ["userId"]),
+
+  tripNotes: defineTable({
+    userId: v.string(),
+    content: v.string(),
+    contactIds: v.optional(v.array(v.string())),
+    eventIds: v.optional(v.array(v.string())),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  }).index("by_userId", ["userId"]).index("by_userId_createdAt", ["userId", "createdAt"]),
 
   contacts: defineTable({
     userId: v.string(),

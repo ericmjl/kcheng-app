@@ -13,7 +13,7 @@ Guidance for AI coding agents working on **China Trip Planner** (kcheng-app): a 
 - **Lint:** `npm run lint` (ESLint; fix errors before committing)
 - **Convex (backend):** `npx convex dev` for local Convex dev; `npx convex dev --once --typecheck=disable` to push schema/functions without blocking on typecheck. Schema and function changes require a push so the deployed backend accepts them.
 
-Always run `npm run build` (or at least `npx tsc --noEmit`) before committing to catch TypeScript errors; the project uses strict mode.
+**Always run `npm run build` after making changes** to ensure nothing is broken. The build runs TypeScript and will fail on type errors (e.g. missing Convex API members, missing type declarations). Fix any build errors before committing; Vercel runs the same build and will fail otherwise.
 
 ---
 
@@ -65,16 +65,17 @@ const doc = await client.query(api.contacts.get, { id: id as DocId<"contacts"> }
 
 ## Testing and validation
 
-- **TypeScript:** Run `npx tsc --noEmit` to verify types. Fix any errors before committing; Vercel build runs this.
+- **Build:** Always run `npm run build` after making changes. This catches TypeScript errors, missing types, and Convex API mismatches. Do not commit or push if the build fails.
+- **TypeScript:** `npm run build` runs the typecheck; you can also run `npx tsc --noEmit` alone.
 - **Lint:** Run `npm run lint`. Fix reported issues.
-- No Jest/Vitest/Playwright in this repo; rely on typecheck and lint plus manual verification.
+- No Jest/Vitest/Playwright in this repo; rely on build, typecheck, and lint plus manual verification.
 
 ---
 
 ## Git and deployment
 
 - **Branch:** Work on `main` or a feature branch; default branch is `main`.
-- **Before commit:** Run `npm run build` (or `npx tsc --noEmit`) and `npm run lint`. Resolve TypeScript and ESLint errors.
+- **Before commit:** Run `npm run build` and `npm run lint`. Resolve any build or lint errors; do not push if the build fails.
 - **Convex:** After changing `convex/schema.ts` or any `convex/*.ts` function, run `npx convex dev --once` (or keep `npx convex dev` running) so the deployed backend is updated.
 - **Vercel:** Pushes to `main` trigger production deploys. Env vars must be set in Vercel (and in WorkOS dashboard for auth) for production.
 

@@ -9,11 +9,13 @@
  */
 
 import type * as contacts from "../contacts.js";
+import type * as crons from "../crons.js";
 import type * as dossiers from "../dossiers.js";
 import type * as events from "../events.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as plannedRoutes from "../plannedRoutes.js";
 import type * as pushSubscriptions from "../pushSubscriptions.js";
+import type * as reminders from "../reminders.js";
 import type * as todos from "../todos.js";
 import type * as userSettings from "../userSettings.js";
 
@@ -25,11 +27,13 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   contacts: typeof contacts;
+  crons: typeof crons;
   dossiers: typeof dossiers;
   events: typeof events;
   "lib/auth": typeof lib_auth;
   plannedRoutes: typeof plannedRoutes;
   pushSubscriptions: typeof pushSubscriptions;
+  reminders: typeof reminders;
   todos: typeof todos;
   userSettings: typeof userSettings;
 }>;

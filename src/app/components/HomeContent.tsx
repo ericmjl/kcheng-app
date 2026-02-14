@@ -126,6 +126,13 @@ export function HomeContent() {
       {/* Quick links — same as top nav */}
       <nav className="flex flex-wrap items-center justify-center gap-3 text-sm" aria-label="Quick links">
         <Link
+          href="/"
+          className="rounded-lg px-3 py-1.5 text-[var(--text-muted)] hover:bg-[var(--mint-soft)] hover:text-[var(--text)]"
+        >
+          Home
+        </Link>
+        <span className="text-[var(--text-muted)]/60" aria-hidden>·</span>
+        <Link
           href="/calendar"
           className="rounded-lg px-3 py-1.5 text-[var(--text-muted)] hover:bg-[var(--mint-soft)] hover:text-[var(--text)]"
         >

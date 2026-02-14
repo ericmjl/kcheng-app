@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 
 const links = [
+  { href: "/", label: "Home" },
   { href: "/calendar", label: "Calendar" },
   { href: "/contacts", label: "Contacts" },
   { href: "/todos", label: "To-dos" },

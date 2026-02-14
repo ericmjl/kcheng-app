@@ -31,6 +31,13 @@ function needsLinkedInPhotoRefresh(c: Contact): boolean {
   }
 }
 
+function normalizeName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +55,10 @@ export default function ContactsPage() {
   const [enrichId, setEnrichId] = useState<string | null>(null);
   const [enrichCandidates, setEnrichCandidates] = useState<{ title: string; link: string; summary?: string }[]>([]);
   const [enrichLoading, setEnrichLoading] = useState(false);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [matchCandidate, setMatchCandidate] = useState<Contact | null>(null);
+  const scanCardInputRef = useRef<HTMLInputElement>(null);
 
   const loadContacts = useCallback(async () => {
     try {
@@ -193,6 +204,83 @@ export default function ContactsPage() {
       notes: c.notes ?? "",
       pronouns: c.pronouns ?? "",
     });
+    setMatchCandidate(null);
+    setScanError(null);
+  }
+
+  type ParsedContact = {
+    name?: string;
+    company?: string;
+    role?: string;
+    phone?: string;
+    email?: string;
+    notes?: string;
+    stockTicker?: string;
+    pronouns?: string;
+  };
+
+  function findMatch(parsed: ParsedContact): Contact | null {
+    const email = parsed.email?.trim();
+    const name = parsed.name?.trim();
+    if (!email && !name) return null;
+    return (
+      contacts.find((c) => {
+        if (email && c.email?.trim().toLowerCase() === email.toLowerCase())
+          return true;
+        if (name && normalizeName(c.name) === normalizeName(name)) return true;
+        return false;
+      }) ?? null
+    );
+  }
+
+  function openFromScan(parsed: ParsedContact) {
+    const contact = {
+      name: parsed.name ?? "",
+      company: parsed.company ?? "",
+      role: parsed.role ?? "",
+      phone: parsed.phone ?? "",
+      email: parsed.email ?? "",
+      stockTicker: parsed.stockTicker ?? "",
+      notes: parsed.notes ?? "",
+      pronouns: parsed.pronouns ?? "",
+    };
+    setForm(contact);
+    setEditing({
+      id: "",
+      name: contact.name,
+      eventIds: [],
+      createdAt: "",
+      updatedAt: "",
+    });
+    setMatchCandidate(findMatch(parsed));
+    setScanError(null);
+  }
+
+  async function handleScanCardFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file?.size) return;
+    setScanLoading(true);
+    setScanError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/contacts/scan-card", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setScanError(data.error ?? "Scan failed");
+        return;
+      }
+      openFromScan(data.contact ?? {});
+    } catch {
+      setScanError("Scan failed");
+    } finally {
+      setScanLoading(false);
+    }
   }
 
   async function saveContact(e: React.FormEvent) {
@@ -219,6 +307,8 @@ export default function ContactsPage() {
         const updated = await res.json();
         setContacts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
         setEditing(null);
+        setMatchCandidate(null);
+        setScanError(null);
       }
     } else {
       const res = await fetch("/api/contacts", {
@@ -231,6 +321,8 @@ export default function ContactsPage() {
         const created = await res.json();
         setContacts((prev) => [...prev, created]);
         setEditing(null);
+        setMatchCandidate(null);
+        setScanError(null);
       }
     }
   }
@@ -243,8 +335,16 @@ export default function ContactsPage() {
     if (res.ok) {
       setContacts((prev) => prev.filter((c) => c.id !== id));
       setEditing(null);
+      setMatchCandidate(null);
+      setScanError(null);
       setEnrichId(null);
     }
+  }
+
+  function closeEditForm() {
+    setEditing(null);
+    setMatchCandidate(null);
+    setScanError(null);
   }
 
   async function runEnrich(c: Contact) {
@@ -324,20 +424,73 @@ export default function ContactsPage() {
 
   return (
     <main className="mx-auto max-w-5xl p-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-2xl font-semibold text-[var(--text)]">Contacts</h1>
-        <button
-          type="button"
-          onClick={openNew}
-          className="rounded-xl bg-[var(--mint)] px-4 py-2 text-sm font-medium text-[var(--text)] shadow-sm hover:opacity-90"
-        >
-          Add contact
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={scanCardInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            aria-hidden
+            onChange={handleScanCardFile}
+          />
+          <button
+            type="button"
+            disabled={scanLoading}
+            onClick={() => scanCardInputRef.current?.click()}
+            className="rounded-xl border border-[var(--mint-soft)] bg-[var(--wall)] px-4 py-2 text-sm font-medium text-[var(--text)] shadow-sm hover:bg-[var(--mint-soft)] disabled:opacity-60"
+          >
+            {scanLoading ? "Scanning…" : "Scan card"}
+          </button>
+          <button
+            type="button"
+            onClick={openNew}
+            className="rounded-xl bg-[var(--mint)] px-4 py-2 text-sm font-medium text-[var(--text)] shadow-sm hover:opacity-90"
+          >
+            Add contact
+          </button>
+        </div>
       </div>
+
+      {scanError && !editing && (
+        <div className="mb-4 rounded-lg border border-[var(--coral)]/50 bg-[var(--peach)]/20 px-4 py-2 text-sm text-[var(--text)]">
+          Scan failed: {scanError}
+        </div>
+      )}
 
       {/* Add/Edit form */}
       {editing && (
         <section className="mb-8 rounded-xl border border-[var(--mint-soft)] bg-[var(--cream)] p-5 shadow-sm">
+          {scanError && (
+            <div className="mb-4 rounded-lg border border-[var(--coral)]/50 bg-[var(--peach)]/20 px-4 py-2 text-sm text-[var(--text)]">
+              Scan failed: {scanError}
+            </div>
+          )}
+          {matchCandidate && (
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--mint-soft)] bg-[var(--mint-soft)]/30 px-4 py-2 text-sm text-[var(--text)]">
+              <span>Possible match: {matchCandidate.name}.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(matchCandidate);
+                  setMatchCandidate(null);
+                }}
+                className="font-medium text-[var(--mint)] underline hover:no-underline"
+              >
+                Update them
+              </button>
+              <span>or</span>
+              <button
+                type="button"
+                onClick={() => setMatchCandidate(null)}
+                className="font-medium text-[var(--mint)] underline hover:no-underline"
+              >
+                Add as new
+              </button>
+            </div>
+          )}
           <h2 className="mb-4 font-medium text-[var(--text)]">
             {editing.id ? "Edit contact" : "New contact"}
           </h2>
@@ -404,7 +557,7 @@ export default function ContactsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setEditing(null)}
+                onClick={closeEditForm}
                 className="rounded-lg border border-[var(--mint-soft)] px-4 py-2 text-sm text-[var(--text-muted)] hover:bg-[var(--mint-soft)]"
               >
                 Cancel

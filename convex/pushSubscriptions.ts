@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { internalQuery, mutation } from "./_generated/server";
 import { requireUserId } from "./lib/auth";
 
 export const set = mutation({
@@ -25,5 +25,16 @@ export const set = mutation({
       updatedAt: now,
     });
     return { ok: true };
+  },
+});
+
+/** For reminders: get all push subscriptions for a user. */
+export const listByUserId = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("pushSubscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
   },
 });

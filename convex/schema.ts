@@ -58,9 +58,10 @@ export default defineSchema({
     contactIds: v.optional(v.array(v.string())),
     contactId: v.optional(v.string()), // legacy; prefer contactIds
     notes: v.optional(v.string()),
+    reminderSentAt: v.optional(v.string()), // ISO string when we sent a push reminder
     createdAt: v.string(),
     updatedAt: v.string(),
-  }).index("by_userId", ["userId"]).index("by_userId_start", ["userId", "start"]),
+  }).index("by_userId", ["userId"]).index("by_userId_start", ["userId", "start"]).index("by_start", ["start"]),
 
   todos: defineTable({
     userId: v.string(),

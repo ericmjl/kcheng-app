@@ -37,6 +37,7 @@ A Progressive Web App (PWA) for a single China trip: calendar, reminders, contac
      - **Firebase Admin (server):** `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (from a Firebase service account JSON)
      - **API keys:** `OPENAI_API_KEY`, `FINNHUB_API_KEY`
      - **Push (optional):** `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (generate with `npx web-push generate-vapid-keys`)
+     - **Proactive reminders:** For “event in 30 min” push notifications, also set `PUSH_SEND_SECRET` (or `CRON_SECRET`) to a random secret, and `APP_URL` (or `NEXT_PUBLIC_APP_URL`) to your app’s base URL (e.g. `https://your-app.vercel.app`). In the Convex dashboard → Settings → Environment Variables, add the same `PUSH_SEND_SECRET` and `APP_URL` so the reminder cron can call your app.
 
 3. **Firebase (required for calendar, contacts, todos, and assistant)**
    - If users see “The assistant isn’t available” or data doesn’t load, Firebase isn’t set up yet. Do the following:

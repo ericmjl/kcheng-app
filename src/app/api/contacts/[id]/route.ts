@@ -39,6 +39,7 @@ export async function PATCH(
     if (body.notes !== undefined) updates.notes = body.notes ? String(body.notes).trim() : undefined;
     if (body.pronouns !== undefined) updates.pronouns = body.pronouns ? String(body.pronouns).trim() : "";
     if (body.photoUrl !== undefined) updates.photoUrl = body.photoUrl ? String(body.photoUrl).trim() : undefined;
+    if (body.linkedInPhotoFetchedAt !== undefined) updates.linkedInPhotoFetchedAt = body.linkedInPhotoFetchedAt ? String(body.linkedInPhotoFetchedAt).trim() : undefined;
     if (body.linkedInUrl !== undefined) updates.linkedInUrl = body.linkedInUrl ? String(body.linkedInUrl).trim() : undefined;
     if (body.researchSummary !== undefined) updates.researchSummary = body.researchSummary ? String(body.researchSummary).trim() : undefined;
     if (body.researchTaskId !== undefined) updates.researchTaskId = body.researchTaskId ? String(body.researchTaskId).trim() : undefined;

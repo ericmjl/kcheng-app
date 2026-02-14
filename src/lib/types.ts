@@ -43,6 +43,8 @@ export type Contact = {
   notes?: string;
   pronouns?: string;
   photoUrl?: string;
+  /** When we last fetched photoUrl from LinkedIn (ISO); used for TTL refresh. */
+  linkedInPhotoFetchedAt?: string;
   linkedInUrl?: string;
   researchSummary?: string;
   displaySummary?: string;

@@ -41,7 +41,11 @@ export async function POST(
     });
     const candidates = results
       .filter((r) => r.url.includes("linkedin.com/in/"))
-      .map((r) => ({ title: r.title, link: r.url }));
+      .map((r) => ({
+        title: r.title,
+        link: r.url,
+        summary: r.summary,
+      }));
 
     return NextResponse.json({ candidates });
   } catch (e) {

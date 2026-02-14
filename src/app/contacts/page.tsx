@@ -6,6 +6,8 @@ import { cachedGet } from "@/lib/cachedFetch";
 import type { Contact } from "@/lib/types";
 import Link from "next/link";
 
+const LINKEDIN_PHOTO_TTL_DAYS = 30;
+
 function initials(name: string): string {
   return name
     .trim()
@@ -14,6 +16,19 @@ function initials(name: string): string {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+}
+
+function needsLinkedInPhotoRefresh(c: Contact): boolean {
+  if (!c.linkedInUrl?.trim()) return false;
+  const fetchedAt = c.linkedInPhotoFetchedAt;
+  if (!fetchedAt) return true;
+  try {
+    const then = new Date(fetchedAt).getTime();
+    const ttlMs = LINKEDIN_PHOTO_TTL_DAYS * 24 * 60 * 60 * 1000;
+    return Date.now() - then > ttlMs;
+  } catch {
+    return true;
+  }
 }
 
 export default function ContactsPage() {
@@ -31,7 +46,7 @@ export default function ContactsPage() {
     pronouns: "",
   });
   const [enrichId, setEnrichId] = useState<string | null>(null);
-  const [enrichCandidates, setEnrichCandidates] = useState<{ title: string; link: string }[]>([]);
+  const [enrichCandidates, setEnrichCandidates] = useState<{ title: string; link: string; summary?: string }[]>([]);
   const [enrichLoading, setEnrichLoading] = useState(false);
 
   const loadContacts = useCallback(async () => {
@@ -73,6 +88,50 @@ export default function ContactsPage() {
     window.addEventListener("trip-assistant:data-changed", onDataChanged);
     return () => window.removeEventListener("trip-assistant:data-changed", onDataChanged);
   }, [loadContacts]);
+
+  // Retroactive + TTL refresh: fetch LinkedIn profile photos for contacts that need it (throttled)
+  const photoRefreshInFlightRef = useRef(false);
+  useEffect(() => {
+    if (loading || contacts.length === 0 || photoRefreshInFlightRef.current) return;
+    const toRefresh = contacts.filter(needsLinkedInPhotoRefresh);
+    if (toRefresh.length === 0) return;
+    photoRefreshInFlightRef.current = true;
+    let index = 0;
+    const runNext = async () => {
+      if (index >= toRefresh.length) {
+        photoRefreshInFlightRef.current = false;
+        return;
+      }
+      const c = toRefresh[index];
+      index += 1;
+      try {
+        const imgRes = await fetch(
+          `/api/linkedin-profile-image?url=${encodeURIComponent(c.linkedInUrl!)}`,
+          { credentials: "include" }
+        );
+        const data = imgRes.ok ? await imgRes.json() : {};
+        const photoUrl = data.imageUrl as string | undefined;
+        const now = new Date().toISOString();
+        const patchRes = await fetch(`/api/contacts/${c.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            ...(photoUrl && { photoUrl }),
+            linkedInPhotoFetchedAt: now,
+          }),
+        });
+        if (patchRes.ok) {
+          const updated = await patchRes.json();
+          setContacts((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+        }
+      } catch {
+        // skip; will retry after next load or TTL
+      }
+      setTimeout(runNext, 800);
+    };
+    runNext();
+  }, [loading, contacts]);
 
   // Poll research status for any contact with an in-flight task
   const researchContactIds = contacts
@@ -208,11 +267,28 @@ export default function ContactsPage() {
 
   async function pickLinkedIn(contactId: string, link: string) {
     if (!link) return;
+    let photoUrl: string | undefined;
+    try {
+      const imgRes = await fetch(
+        `/api/linkedin-profile-image?url=${encodeURIComponent(link)}`,
+        { credentials: "include" }
+      );
+      if (imgRes.ok) {
+        const data = await imgRes.json();
+        if (data.imageUrl) photoUrl = data.imageUrl;
+      }
+    } catch {
+      // ignore; we'll still save the LinkedIn URL
+    }
+    const now = new Date().toISOString();
     const res = await fetch(`/api/contacts/${contactId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ linkedInUrl: link }),
+      body: JSON.stringify({
+        linkedInUrl: link,
+        ...(photoUrl && { photoUrl, linkedInPhotoFetchedAt: now }),
+      }),
     });
     if (res.ok) {
       const updated = await res.json();
@@ -363,18 +439,23 @@ export default function ContactsPage() {
             >
               {c.photoUrl ? (
                 <img
-                  src={c.photoUrl}
+                  src={`/api/contacts/${c.id}/photo`}
                   alt=""
-                  className="h-12 w-12 shrink-0 rounded-full object-cover"
+                  className="h-12 w-12 shrink-0 rounded-full object-cover bg-[var(--mint-soft)]"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.hidden = false;
+                  }}
                 />
-              ) : (
-                <div
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--mint-soft)] text-sm font-medium text-[var(--text)]"
-                  aria-hidden
-                >
-                  {initials(c.name)}
-                </div>
-              )}
+              ) : null}
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--mint-soft)] text-sm font-medium text-[var(--text)]"
+                aria-hidden
+                hidden={!!c.photoUrl}
+              >
+                {initials(c.name)}
+              </div>
               <div className="min-w-0 flex-1">
                 <h3 className="font-medium text-[var(--text)] truncate">{c.name}</h3>
                 {(c.company || c.role) && (
@@ -475,10 +556,15 @@ export default function ContactsPage() {
                     <button
                       type="button"
                       onClick={() => pickLinkedIn(enrichId, item.link)}
-                      className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--text)] hover:bg-[var(--mint-soft)]"
+                      className="w-full rounded-lg px-3 py-2.5 text-left text-sm text-[var(--text)] hover:bg-[var(--mint-soft)]"
                     >
                       <span className="font-medium line-clamp-1">{item.title}</span>
-                      <span className="block truncate text-xs text-[var(--text-muted)]">
+                      {item.summary && (
+                        <span className="mt-0.5 block line-clamp-2 text-xs text-[var(--text-muted)]">
+                          {item.summary}
+                        </span>
+                      )}
+                      <span className="mt-0.5 block truncate text-xs font-medium text-[var(--text)]">
                         {item.link}
                       </span>
                     </button>

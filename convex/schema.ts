@@ -38,6 +38,7 @@ export default defineSchema({
     notes: v.optional(v.string()),
     pronouns: v.optional(v.string()),
     photoUrl: v.optional(v.string()),
+    linkedInPhotoFetchedAt: v.optional(v.string()),
     linkedInUrl: v.optional(v.string()),
     researchSummary: v.optional(v.string()),
     displaySummary: v.optional(v.string()),

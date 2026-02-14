@@ -9,13 +9,10 @@ export function HomeContent() {
     <div className="flex flex-col gap-6">
       {/* Hero: Q-tip + title */}
       <section className="flex flex-col items-center gap-2 text-center">
-        <QuokkaAvatar size={100} aria-hidden={false} />
+        <QuokkaAvatar size={160} aria-hidden={false} />
         <h1 className="text-2xl font-bold tracking-tight text-[var(--text)] sm:text-3xl">
           Trip Assistant
         </h1>
-        <p className="text-sm text-[var(--text-muted)]">
-          Your calendar, contacts, meetings, trains, and todos in one place.
-        </p>
       </section>
 
       {/* Inline chat (same UI as panel) */}

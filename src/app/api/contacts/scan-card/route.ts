@@ -26,6 +26,15 @@ const ScannedContactSchema = z
   })
   .strict();
 
+/** Title-case a string (e.g. "ALEXIS FERGUSON" → "Alexis Ferguson"). */
+function toTitleCase(s: string): string {
+  if (!s.trim()) return s;
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function trimContact(
   raw: z.infer<typeof ScannedContactSchema>
 ): z.infer<typeof ScannedContactSchema> {
@@ -38,6 +47,22 @@ function trimContact(
     notes: raw.notes?.trim() ?? "",
     stockTicker: raw.stockTicker?.trim() ?? "",
     pronouns: raw.pronouns?.trim() ?? "",
+  };
+}
+
+/** Normalize case of display-oriented fields so all-caps from OCR looks professional. */
+function normalizeCase(
+  c: z.infer<typeof ScannedContactSchema>
+): z.infer<typeof ScannedContactSchema> {
+  return {
+    name: toTitleCase(c.name ?? ""),
+    company: toTitleCase(c.company ?? ""),
+    role: toTitleCase(c.role ?? ""),
+    phone: c.phone ?? "",
+    email: (c.email ?? "").toLowerCase(),
+    notes: toTitleCase(c.notes ?? ""),
+    stockTicker: (c.stockTicker ?? "").toUpperCase(),
+    pronouns: c.pronouns ?? "",
   };
 }
 
@@ -57,6 +82,16 @@ const SCANNED_CONTACT_JSON_SCHEMA = {
     stockTicker: { type: "string" },
     pronouns: { type: "string" },
   },
+  required: [
+    "name",
+    "company",
+    "role",
+    "phone",
+    "email",
+    "notes",
+    "stockTicker",
+    "pronouns",
+  ],
   additionalProperties: false,
 };
 
@@ -156,7 +191,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const contact = trimContact(result.data);
+    const contact = normalizeCase(trimContact(result.data));
     return NextResponse.json({ contact });
   } catch (e) {
     console.error("[scan-card]", e);

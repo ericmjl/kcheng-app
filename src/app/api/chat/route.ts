@@ -34,7 +34,12 @@ Uploaded Excel or Word files:
 - Interpret the content and call createContact, createEvent, and/or createTodo as appropriate. Create one tool call per row or per extracted item.
 - Use ISO 8601 for dates/times. All event and todo dates must fall within the user's trip range.
 
-Always call the tools; do not skip tool calls.`;
+Photos and images:
+- The user may attach a photo (e.g. a business card, contact screenshot, or image containing contact details). You can see the image content.
+- When a photo clearly shows contact information (name, and optionally company, role, phone, email, etc.), extract the details and call createContact immediately. Do not ask for confirmation—create the contact. Use title case for name, company, and role (e.g. "John Smith", not "JOHN SMITH"). If multiple people appear in one image, call createContact for each.
+- If the image does not contain contact information, say so briefly and do not create a contact.
+
+Always call the tools when appropriate; do not skip tool calls.`;
 
 /** Returns YYYY-MM-DD from an ISO date or datetime string. */
 function datePart(iso: string): string {
@@ -123,8 +128,10 @@ export async function POST(request: NextRequest) {
             (part as { type?: string }).type === "file"
           ) {
             const p = part as { mediaType?: string; url?: string };
-            const mediaType = p.mediaType ?? "";
+            const mediaType = (p.mediaType ?? "").toLowerCase();
             const url = p.url ?? "";
+            // Leave image parts as-is so the vision model receives them
+            if (mediaType.startsWith("image/")) return part;
             if (isParseableDoc(mediaType) && url.startsWith("data:")) {
               const parsed = await parseDocumentFromDataUrl(url, mediaType);
               if (parsed) {
@@ -180,7 +187,8 @@ export async function POST(request: NextRequest) {
         },
       }),
       createContact: tool({
-        description: "Create a new contact (person met or to meet).",
+        description:
+          "Create a new contact (person met or to meet). Use when the user shares contact info in text or in a photo (e.g. business card). Use title case for name, company, role.",
         inputSchema: z.object({
           name: z.string().describe("Full name of the contact"),
           company: z.string().optional().describe("Company or organization"),
@@ -188,8 +196,19 @@ export async function POST(request: NextRequest) {
           phone: z.string().optional(),
           email: z.string().optional(),
           notes: z.string().optional(),
+          stockTicker: z.string().optional().describe("Company stock ticker if relevant"),
+          pronouns: z.string().optional(),
         }),
-        execute: async ({ name, company, role, phone, email, notes }) => {
+        execute: async ({
+          name,
+          company,
+          role,
+          phone,
+          email,
+          notes,
+          stockTicker,
+          pronouns,
+        }) => {
           try {
             const doc = await convexClient.mutation(api.contacts.create, {
               name: String(name ?? "").trim(),
@@ -198,6 +217,8 @@ export async function POST(request: NextRequest) {
               phone: phone ? String(phone).trim() : undefined,
               email: email ? String(email).trim() : undefined,
               notes: notes ? String(notes).trim() : undefined,
+              stockTicker: stockTicker ? String(stockTicker).trim() : undefined,
+              pronouns: pronouns ? String(pronouns).trim() : undefined,
             });
             console.log("[chat] createContact ok:", name, doc?._id);
             return doc ?? { id: "", name: String(name ?? "").trim() };

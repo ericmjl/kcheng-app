@@ -1,84 +1,58 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { WhatsNext } from "./WhatsNext";
-import type { Event } from "@/lib/types";
+import { QuokkaAvatar } from "./QuokkaAvatar";
+import { TripAssistantChat } from "./TripAssistantChat";
 
 export function HomeContent() {
-  const [events, setEvents] = useState<Event[]>([]);
-
-  const loadEvents = useCallback(async () => {
-    try {
-      const res = await fetch("/api/events", { credentials: "include" });
-      if (res.ok) {
-        const data = await res.json();
-        setEvents(Array.isArray(data) ? data : []);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
-
-  useEffect(() => {
-    const onDataChanged = () => loadEvents();
-    window.addEventListener("trip-assistant:data-changed", onDataChanged);
-    return () => window.removeEventListener("trip-assistant:data-changed", onDataChanged);
-  }, [loadEvents]);
-
   return (
-    <>
-      <h1 className="mb-2 text-3xl font-bold tracking-tight text-[var(--text)]">
-        China Trip Planner
-      </h1>
-      <p className="mb-6 text-[var(--text-muted)]">
-        Your calendar, contacts, meetings, trains, and todos in one place.
-      </p>
-      <div className="mb-8">
-        <WhatsNext events={events} maxItems={3} />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+    <div className="flex flex-col gap-6">
+      {/* Hero: Q-tip + title */}
+      <section className="flex flex-col items-center gap-2 text-center">
+        <QuokkaAvatar size={100} aria-hidden={false} />
+        <h1 className="text-2xl font-bold tracking-tight text-[var(--text)] sm:text-3xl">
+          Trip Assistant
+        </h1>
+        <p className="text-sm text-[var(--text-muted)]">
+          Your calendar, contacts, meetings, trains, and todos in one place.
+        </p>
+      </section>
+
+      {/* Inline chat (same UI as panel) */}
+      <section className="min-h-[28rem] overflow-hidden rounded-2xl border border-[var(--mint-soft)] bg-[var(--cream)] shadow-sm">
+        <TripAssistantChat />
+      </section>
+
+      {/* Quick links */}
+      <nav className="flex flex-wrap items-center justify-center gap-3 text-sm" aria-label="Quick links">
         <Link
           href="/calendar"
-          className="rounded-2xl border-2 border-[var(--mint-soft)] bg-[var(--cream)] p-4 shadow-sm transition hover:border-[var(--mint)] hover:shadow"
+          className="rounded-lg px-3 py-1.5 text-[var(--text-muted)] hover:bg-[var(--mint-soft)] hover:text-[var(--text)]"
         >
-          <h2 className="font-semibold text-[var(--text)]">Calendar</h2>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            View each day of your trip and manage events.
-          </p>
+          Calendar
         </Link>
+        <span className="text-[var(--text-muted)]/60" aria-hidden>·</span>
         <Link
           href="/contacts"
-          className="rounded-2xl border-2 border-[var(--sky-soft)] bg-[var(--cream)] p-4 shadow-sm transition hover:border-[var(--sky)] hover:shadow"
+          className="rounded-lg px-3 py-1.5 text-[var(--text-muted)] hover:bg-[var(--mint-soft)] hover:text-[var(--text)]"
         >
-          <h2 className="font-semibold text-[var(--text)]">Contacts</h2>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Notes, companies, and meeting dossiers.
-          </p>
+          Contacts
         </Link>
+        <span className="text-[var(--text-muted)]/60" aria-hidden>·</span>
         <Link
           href="/todos"
-          className="rounded-2xl border-2 border-[var(--peach)]/60 bg-[var(--cream)] p-4 shadow-sm transition hover:border-[var(--peach)] hover:shadow"
+          className="rounded-lg px-3 py-1.5 text-[var(--text-muted)] hover:bg-[var(--mint-soft)] hover:text-[var(--text)]"
         >
-          <h2 className="font-semibold text-[var(--text)]">Todos</h2>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            End-of-day list: emails, follow-ups, bookings.
-          </p>
+          Todos
         </Link>
+        <span className="text-[var(--text-muted)]/60" aria-hidden>·</span>
         <Link
           href="/settings"
-          className="rounded-2xl border-2 border-[var(--wood)] bg-[var(--cream)] p-4 shadow-sm transition hover:border-[var(--coral)]/50 hover:shadow"
+          className="rounded-lg px-3 py-1.5 text-[var(--text-muted)] hover:bg-[var(--mint-soft)] hover:text-[var(--text)]"
         >
-          <h2 className="font-semibold text-[var(--text)]">Settings</h2>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Trip dates, timezone, and API keys.
-          </p>
+          Settings
         </Link>
-      </div>
-    </>
+      </nav>
+    </div>
   );
 }

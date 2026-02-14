@@ -3,46 +3,64 @@ import { NextResponse } from "next/server";
 import { getUid } from "@/lib/workos-auth";
 import { getOpenAIKey } from "@/lib/llm-keys";
 import OpenAI from "openai";
+import { z } from "zod";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
-const SCAN_SYSTEM_PROMPT = `You are given a photo of a business card. Extract contact information and return a single JSON object with only these string fields (use empty string or omit if not found): name, company, role, phone, email, notes, stockTicker, pronouns. No other keys. Normalize phone and email (digits only for phone if helpful; keep email as-is).`;
+/**
+ * Shape of contact data extracted from a business card image.
+ * Kept in sync with the Convex contacts table fields used in api.contacts.create
+ * (name, company, role, phone, email, stockTicker, notes, pronouns).
+ */
+const ScannedContactSchema = z
+  .object({
+    name: z.string().optional().default(""),
+    company: z.string().optional().default(""),
+    role: z.string().optional().default(""),
+    phone: z.string().optional().default(""),
+    email: z.string().optional().default(""),
+    notes: z.string().optional().default(""),
+    stockTicker: z.string().optional().default(""),
+    pronouns: z.string().optional().default(""),
+  })
+  .strict();
 
-type ParsedContact = {
-  name?: string;
-  company?: string;
-  role?: string;
-  phone?: string;
-  email?: string;
-  notes?: string;
-  stockTicker?: string;
-  pronouns?: string;
+function trimContact(
+  raw: z.infer<typeof ScannedContactSchema>
+): z.infer<typeof ScannedContactSchema> {
+  return {
+    name: raw.name?.trim() ?? "",
+    company: raw.company?.trim() ?? "",
+    role: raw.role?.trim() ?? "",
+    phone: raw.phone?.trim() ?? "",
+    email: raw.email?.trim() ?? "",
+    notes: raw.notes?.trim() ?? "",
+    stockTicker: raw.stockTicker?.trim() ?? "",
+    pronouns: raw.pronouns?.trim() ?? "",
+  };
+}
+
+/**
+ * JSON Schema for OpenAI Structured Outputs; matches ScannedContactSchema.
+ * Hand-maintained for strict-mode compatibility (zod-to-json-schema has Zod 4 def differences).
+ */
+const SCANNED_CONTACT_JSON_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    name: { type: "string" },
+    company: { type: "string" },
+    role: { type: "string" },
+    phone: { type: "string" },
+    email: { type: "string" },
+    notes: { type: "string" },
+    stockTicker: { type: "string" },
+    pronouns: { type: "string" },
+  },
+  additionalProperties: false,
 };
 
-const ALLOWED_KEYS: (keyof ParsedContact)[] = [
-  "name",
-  "company",
-  "role",
-  "phone",
-  "email",
-  "notes",
-  "stockTicker",
-  "pronouns",
-];
-
-function sanitize(parsed: unknown): ParsedContact {
-  if (parsed === null || typeof parsed !== "object") return {};
-  const out: ParsedContact = {};
-  const obj = parsed as Record<string, unknown>;
-  for (const key of ALLOWED_KEYS) {
-    const v = obj[key];
-    if (v === undefined || v === null) continue;
-    const s = String(v).trim();
-    if (s) out[key] = s;
-  }
-  return out;
-}
+const SCAN_SYSTEM_PROMPT = `You are given a photo of a business card. Extract contact information into the exact JSON shape required. Use empty string for any field not found. Normalize phone (digits only if helpful) and keep email as-is.`;
 
 export async function POST(request: NextRequest) {
   const uid = await getUid(request);
@@ -101,7 +119,14 @@ export async function POST(request: NextRequest) {
           ],
         },
       ],
-      response_format: { type: "json_object" },
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "scanned_contact",
+          strict: true,
+          schema: SCANNED_CONTACT_JSON_SCHEMA,
+        },
+      },
       max_tokens: 512,
     });
 
@@ -123,9 +148,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const contact = sanitize(parsed);
-    if (!contact.name?.trim()) contact.name = "";
+    const result = ScannedContactSchema.safeParse(parsed);
+    if (!result.success) {
+      return NextResponse.json(
+        { error: "Extracted data did not match schema" },
+        { status: 500 }
+      );
+    }
 
+    const contact = trimContact(result.data);
     return NextResponse.json({ contact });
   } catch (e) {
     console.error("[scan-card]", e);
